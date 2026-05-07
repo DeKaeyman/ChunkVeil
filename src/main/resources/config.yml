@@ -1,0 +1,39 @@
+# ChunkVeil is designed for the overworld. Nether and End support is optional,
+# but disabled by default because their terrain and fake-block choices differ.
+
+# Global performance tuning.
+# Higher ray counts reveal more accurately but cost more CPU.
+# These ray settings apply per player: every tracked player has their own view scan.
+view-reveal-horizontal-rays: 64
+view-reveal-vertical-rays: 13
+view-reveal-occlusion-grace-blocks: 2
+view-reveal-refresh-millis: 150
+
+# World settings. Each world is independent; no block/entity settings are global.
+worlds:
+  world:
+    enabled: true
+    # Blocks from min-y up to, but not including, hide-below-y are hidden.
+    hide-below-y: 0
+    min-y: -64
+    default-fake-block: DEEPSLATE
+    # false is faster: air stays air and only non-air blocks are faked.
+    hide-air: false
+    hide-entities: true
+    hide-players: false
+  world_nether:
+    enabled: false
+    hide-below-y: 32
+    min-y: 0
+    default-fake-block: NETHERRACK
+    hide-air: false
+    hide-entities: true
+    hide-players: false
+  world_the_end:
+    enabled: false
+    hide-below-y: 0
+    min-y: -64
+    default-fake-block: END_STONE
+    hide-air: false
+    hide-entities: true
+    hide-players: false

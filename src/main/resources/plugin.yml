@@ -1,0 +1,36 @@
+name: ChunkVeil
+version: '${version}'
+main: com.dekaeyman.chunkveil.ChunkVeilPlugin
+api-version: '1.21'
+depend:
+  - ProtocolLib
+commands:
+  chunkveil:
+    description: Admin tools for ChunkVeil.
+    usage: /chunkveil <status|reload|refresh|debug|version>
+    aliases:
+      - cv
+permissions:
+  chunkveil.admin:
+    description: Allows all ChunkVeil admin commands.
+    default: op
+    children:
+      chunkveil.status: true
+      chunkveil.reload: true
+      chunkveil.refresh: true
+      chunkveil.debug: true
+  chunkveil.status:
+    description: Allows checking ChunkVeil status.
+    default: op
+  chunkveil.reload:
+    description: Allows reloading ChunkVeil.
+    default: op
+  chunkveil.refresh:
+    description: Allows refreshing ChunkVeil state for online players.
+    default: op
+  chunkveil.debug:
+    description: Allows toggling ChunkVeil debug mode.
+    default: op
+  chunkveil.bypass:
+    description: Bypasses all ChunkVeil hiding for the player.
+    default: false
