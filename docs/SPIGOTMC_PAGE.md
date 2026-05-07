@@ -1,68 +1,156 @@
-# ChunkVeil - Anti-Xray, Anti-ESP and Underground Packet Veil
+# ChunkVeil SpigotMC Resource Page
 
-ChunkVeil is a Paper + ProtocolLib protection plugin that hides underground chunk data from players until they can realistically see or reach it. Instead of only changing ores, it rewrites hidden chunk sections before the client receives them, helping reduce xray, ESP, freecam, hidden-base discovery, and PieChart-style underground information leaks.
+Use this file as the source for the SpigotMC resource form.
 
-## Why ChunkVeil?
+## Form Fields
 
-Most anti-xray setups focus on ore obfuscation. ChunkVeil aims at a broader problem: clients can learn far more than ore positions from chunk packets. Caves, underground rooms, block entities, entity spawns, and later block updates can all leak information.
+Title:
 
-ChunkVeil protects that surface by:
+```text
+ChunkVeil
+```
 
-- Rewriting outgoing chunk packets for hidden underground sections.
-- Replacing underground blocks with a configurable fake block.
-- Revealing chunks with a 360-degree ray scan instead of a simple radius.
-- Keeping already revealed chunks visible until they leave render distance.
-- Rewriting later block updates while a chunk is hidden.
-- Cancelling hidden block entity update packets.
-- Optionally hiding underground entities, including players if you enable it.
-- Providing an emergency runtime disable command that restores online players.
+Version String:
 
-## Best Fit
+```text
+0.1.0-beta.1
+```
 
-ChunkVeil is mainly designed for survival and SMP servers that care about hidden bases, mining fairness, and underground information leaks. The default config targets the overworld and keeps air visible for better performance.
+Tag Line:
 
-Nether and End support are configurable but disabled by default because those dimensions usually need different fake block choices and more careful testing.
+```text
+Packet-level underground anti-xray and anti-ESP protection for Paper servers.
+```
 
-## Requirements
+Native Major MC Version:
 
-- Paper 1.21.11
-- Java 21
-- ProtocolLib compatible with Paper 1.21.11
+```text
+1.21
+```
 
-For Paper 1.21.11, use a ProtocolLib dev build or a runtime jar compatible with 1.21.11 chunk wrappers. Older ProtocolLib builds may not support the chunk packet structures ChunkVeil needs.
+Tested Major MC Versions:
 
-## Commands
+```text
+1.21
+```
 
-`/chunkveil status` - Shows runtime state, enabled worlds, queue size, packet rewrite status, and metrics.
+Source Code:
 
-`/chunkveil reload` - Reloads config and language files, then refreshes online players.
+```text
+https://github.com/DeKaeyman/ChunkVeil
+```
 
-`/chunkveil refresh` - Forces a rescan and refresh for online players.
+Languages Supported:
 
-`/chunkveil disable` - Emergency switch. Stops packet/listener processing, restores hidden entities, and refreshes sent chunks back to real world data.
+```text
+English
+```
 
-`/chunkveil enable` - Starts the runtime again after disabling it.
+Additional Information URL:
 
-`/chunkveil debug on|off` - Logs compact metrics every 30 seconds.
+```text
+https://github.com/DeKaeyman/ChunkVeil
+```
 
-`/chunkveil version` - Shows the plugin version.
+Alternative Support URL:
 
-Alias: `/cv`
+```text
+https://github.com/DeKaeyman/ChunkVeil/issues
+```
 
-## Permissions
+ProtocolLib URL:
 
-- `chunkveil.admin`
-- `chunkveil.status`
-- `chunkveil.reload`
-- `chunkveil.refresh`
-- `chunkveil.toggle`
-- `chunkveil.debug`
-- `chunkveil.bypass`
+```text
+https://www.spigotmc.org/resources/protocollib.1997/
+```
 
-## Default Overworld Setup
+## Description
 
-```yaml
-worlds:
+Paste this into the SpigotMC Description box.
+
+```bbcode
+[CENTER][IMG]BANNER_1_URL[/IMG]
+
+[SIZE=4][B]Packet-level underground protection for Paper servers.[/B][/SIZE]
+
+[COLOR=#3b82f6]Hide underground chunk data before the client can learn it.[/COLOR]
+[/CENTER]
+
+[HR][/HR]
+
+[B][SIZE=5]What is ChunkVeil?[/SIZE][/B]
+
+ChunkVeil is a Paper + ProtocolLib protection plugin that hides underground chunk data from each player until that player can realistically see or reach it.
+
+Most anti-xray setups focus on ore obfuscation. ChunkVeil targets a wider information leak: chunk packets can expose caves, underground rooms, hidden bases, block entities, entity spawns, and later block updates before the player should know they exist.
+
+ChunkVeil helps reduce xray, ESP, freecam, hidden-base discovery, and PieChart-style underground information leaks by rewriting or blocking that data while it is still hidden.
+
+[CENTER][IMG]BANNER_3_URL[/IMG][/CENTER]
+
+[B][SIZE=5]Core Features[/SIZE][/B]
+
+[list]
+[*][B]Chunk packet rewriting[/B] - rewrites outgoing hidden underground chunk sections before the client receives them.
+[*][B]Configurable fake blocks[/B] - replaces hidden blocks with a per-world fake block such as deepslate.
+[*][B]View-based revealing[/B] - reveals chunks with a 360-degree ray scan instead of a simple distance radius.
+[*][B]Persistent reveals[/B] - keeps revealed chunks visible until they leave the player's render distance.
+[*][B]Block update protection[/B] - rewrites later block and multi-block changes while a chunk is hidden.
+[*][B]Block entity protection[/B] - cancels hidden block entity update packets below the hidden Y range.
+[*][B]Optional entity hiding[/B] - can hide underground entities, with player hiding disabled by default.
+[*][B]Admin safety tools[/B] - status, refresh, reload, debug metrics, and emergency runtime disable.
+[/list]
+
+[B][SIZE=5]Best Fit[/SIZE][/B]
+
+[list]
+[*]Survival servers
+[*]SMP servers
+[*]Servers that care about underground bases
+[*]Servers that want extra protection beyond ore-only anti-xray
+[/list]
+
+ChunkVeil is primarily designed for the overworld. Nether and End support are configurable but disabled by default because those dimensions usually need different fake block choices and more careful testing.
+
+[B][SIZE=5]Requirements[/SIZE][/B]
+
+[list]
+[*]Paper 1.21.11
+[*]Java 21
+[*]ProtocolLib compatible with Paper 1.21.11: https://www.spigotmc.org/resources/protocollib.1997/
+[/list]
+
+[COLOR=#d97706][B]Important:[/B][/COLOR] ChunkVeil touches packet internals. Minecraft, Paper, or ProtocolLib updates can affect compatibility. For Paper 1.21.11, use the ProtocolLib build recommended on the ProtocolLib resource page for 1.21.9-1.21.11. Please test on your own setup before using it on a large production server.
+
+[B][SIZE=5]Commands[/SIZE][/B]
+
+[list]
+[*][B]/chunkveil status[/B] - Shows runtime state, enabled worlds, queue size, packet rewrite status, and metrics.
+[*][B]/chunkveil reload[/B] - Reloads config and language files, then refreshes online players.
+[*][B]/chunkveil refresh[/B] - Forces a rescan and refresh for online players.
+[*][B]/chunkveil disable[/B] - Emergency switch. Stops packet/listener processing, restores hidden entities, and refreshes sent chunks back to real world data.
+[*][B]/chunkveil enable[/B] - Starts the runtime again after disabling it.
+[*][B]/chunkveil debug on|off[/B] - Logs compact metrics every 30 seconds.
+[*][B]/chunkveil version[/B] - Shows the plugin version.
+[/list]
+
+Alias: [B]/cv[/B]
+
+[B][SIZE=5]Permissions[/SIZE][/B]
+
+[list]
+[*][B]chunkveil.admin[/B] - Allows all ChunkVeil admin commands.
+[*][B]chunkveil.status[/B] - Allows /chunkveil status.
+[*][B]chunkveil.reload[/B] - Allows /chunkveil reload.
+[*][B]chunkveil.refresh[/B] - Allows /chunkveil refresh.
+[*][B]chunkveil.toggle[/B] - Allows /chunkveil disable and /chunkveil enable.
+[*][B]chunkveil.debug[/B] - Allows /chunkveil debug on/off.
+[*][B]chunkveil.bypass[/B] - Bypasses all ChunkVeil hiding for that player.
+[/list]
+
+[B][SIZE=5]Default Overworld Setup[/SIZE][/B]
+
+[CODE]worlds:
   world:
     enabled: true
     hide-below-y: 0
@@ -70,41 +158,95 @@ worlds:
     default-fake-block: DEEPSLATE
     hide-air: false
     hide-entities: true
-    hide-players: false
+    hide-players: false[/CODE]
+
+[B]hide-air: false[/B] is the recommended default because it is much lighter. Turn it on only if you want more aggressive cave and base-layout hiding and have tested the performance impact on your server.
+
+[B][SIZE=5]Recommended First Test[/SIZE][/B]
+
+[list=1]
+[*]Install Paper 1.21.11, Java 21, ProtocolLib, and ChunkVeil.
+[*]Start the server once to generate config files.
+[*]Join with an admin account and run [B]/chunkveil status[/B].
+[*]Mine or teleport underground below the configured hide-below-y.
+[*]Test with your real render distance, player count, and world setup.
+[*]Use [B]/chunkveil debug on[/B] during testing and profile with Spark if needed.
+[/list]
+
+[B][SIZE=5]Links[/SIZE][/B]
+
+[list]
+[*][B]Source code:[/B] https://github.com/DeKaeyman/ChunkVeil
+[*][B]Bug reports:[/B] https://github.com/DeKaeyman/ChunkVeil/issues
+[*][B]Releases:[/B] https://github.com/DeKaeyman/ChunkVeil/releases
+[/list]
+
+[B][SIZE=5]Bug Reports[/SIZE][/B]
+
+Please include:
+
+[list]
+[*]ChunkVeil version
+[*]Paper version
+[*]ProtocolLib version
+[*]Server logs
+[*]Config
+[*]Steps to reproduce
+[*]Whether the issue happens with only ChunkVeil and ProtocolLib installed
+[/list]
+
+[HR][/HR]
+
+[CENTER][B]ChunkVeil reduces underground information leaks. It does not claim to make every hacked client impossible to use.[/B][/CENTER]
 ```
 
-`hide-air: false` is the recommended default because it is much lighter. Turn it on only if you want more aggressive cave and base layout hiding and have tested the performance impact on your server.
+## Documentation
 
-## Recommended First Test
+Paste this into the SpigotMC Documentation box.
 
-1. Install Paper 1.21.11, Java 21, ProtocolLib, and ChunkVeil.
-2. Start the server once to generate config files.
-3. Join with an admin account and run `/chunkveil status`.
-4. Mine or teleport underground below the configured `hide-below-y`.
-5. Test with your real render distance, player count, and world setup.
-6. Use `/chunkveil debug on` during testing and profile with Spark if needed.
+```bbcode
+[CENTER][IMG]BANNER_2_URL[/IMG][/CENTER]
 
-## Current Status
+[B][SIZE=5]Installation[/SIZE][/B]
 
-ChunkVeil is suitable for careful server-owner testing, but it touches packet internals and should be treated as a compatibility-sensitive plugin. Please report bugs with:
+[list=1]
+[*]Install Paper 1.21.11.
+[*]Install Java 21.
+[*]Install ProtocolLib compatible with Paper 1.21.11: https://www.spigotmc.org/resources/protocollib.1997/
+[*]Put ChunkVeil in your server's plugins folder.
+[*]Start the server once to generate config.yml and lang.yml.
+[*]Run [B]/chunkveil status[/B] in-game or from console.
+[/list]
 
-- Paper version
-- ProtocolLib version
-- ChunkVeil version
-- Server logs
-- Config
-- Reproduction steps
-- Whether the issue happens with only ChunkVeil + ProtocolLib installed
+[B][SIZE=5]Configuration[/SIZE][/B]
 
-## Public GitHub Release
+ChunkVeil creates its config at:
 
-ChunkVeil is planned as a public GitHub project. The best launch flow is to publish the source, attach release jars through GitHub Releases, and use issues for bug reports and compatibility feedback.
+[CODE]plugins/ChunkVeil/config.yml[/CODE]
 
-Recommended public links:
+The default setup protects the overworld below Y 0 and uses DEEPSLATE as the fake block.
 
-- GitHub repository
-- GitHub Releases for downloads
-- GitHub Issues for bug reports
-- README for setup, config, and compatibility notes
+[CODE]worlds:
+  world:
+    enabled: true
+    hide-below-y: 0
+    min-y: -64
+    default-fake-block: DEEPSLATE
+    hide-air: false
+    hide-entities: true
+    hide-players: false[/CODE]
 
-Avoid promising that it blocks every hacked client. A stronger and safer claim is that ChunkVeil reduces underground information leaks by hiding chunk, block update, block entity, and optional entity data until the player can reasonably reveal it.
+[B]Recommended default:[/B] keep hide-air set to false unless you have tested the performance cost.
+
+[CENTER][IMG]BANNER_4_URL[/IMG][/CENTER]
+
+[B][SIZE=5]Support[/SIZE][/B]
+
+Report bugs on GitHub:
+
+https://github.com/DeKaeyman/ChunkVeil/issues
+
+Full README and source code:
+
+https://github.com/DeKaeyman/ChunkVeil
+```
