@@ -9,13 +9,15 @@ commands:
   version: "Version &f{version}"
 
   help:
-    - "/{label} status"
-    - "/{label} reload"
-    - "/{label} refresh"
-    - "/{label} disable"
-    - "/{label} enable"
-    - "/{label} debug <on|off>"
-    - "/{label} version"
+    no-commands: "&cYou do not have access to any ChunkVeil commands."
+    unknown-command: "&cUnknown command. Available commands:"
+    status: "/{label} status"
+    reload: "/{label} reload"
+    refresh: "/{label} refresh"
+    disable: "/{label} disable"
+    enable: "/{label} enable"
+    debug: "/{label} debug <on|off>"
+    version: "/{label} version"
 
   status:
     title: "Status"

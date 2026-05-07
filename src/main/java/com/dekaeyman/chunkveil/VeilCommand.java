@@ -37,7 +37,10 @@ final class VeilCommand implements TabExecutor {
             case "version" -> sender.sendMessage(lang().message("commands.version", Map.of(
                     "version", plugin.getDescription().getVersion()
             )));
-            default -> sendHelp(sender, label);
+            default -> {
+                sender.sendMessage(lang().message("commands.help.unknown-command"));
+                sendHelp(sender, label);
+            }
         }
         return true;
     }
@@ -61,8 +64,16 @@ final class VeilCommand implements TabExecutor {
     }
 
     private void sendHelp(CommandSender sender, String label) {
-        for (String line : lang().messages("commands.help", Map.of("label", label))) {
-            sender.sendMessage(line);
+        boolean sentAny = false;
+        for (String subcommand : SUBCOMMANDS) {
+            if (!canUse(sender, permissionFor(subcommand))) {
+                continue;
+            }
+            sender.sendMessage(lang().message("commands.help." + subcommand, Map.of("label", label)));
+            sentAny = true;
+        }
+        if (!sentAny) {
+            sender.sendMessage(lang().message("commands.help.no-commands"));
         }
     }
 
