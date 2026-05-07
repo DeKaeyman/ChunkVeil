@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible ChunkVeil bug
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing ChunkVeil. Packet issues are very version-sensitive, so exact versions and reproduction steps matter a lot.
+  - type: input
+    id: chunkveil-version
+    attributes:
+      label: ChunkVeil version
+      placeholder: "Example: 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: paper-version
+    attributes:
+      label: Paper version
+      placeholder: "Example: Paper 1.21.11 build ..."
+    validations:
+      required: true
+  - type: input
+    id: protocollib-version
+    attributes:
+      label: ProtocolLib version
+      placeholder: "Example: ProtocolLib 5.4.1 dev build ..."
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start server with ...
+        2. Join as ...
+        3. Run ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: ChunkVeil config
+      description: Paste your config.yml, removing anything private if needed.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant startup/errors. Use a paste service for very long logs.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I tested with the supported Paper version listed by ChunkVeil.
+          required: true
+        - label: I tested with ProtocolLib installed and up to date for my server version.
+          required: true
+        - label: I tried to reproduce with only ChunkVeil and ProtocolLib installed, or explained why I could not.
+          required: true

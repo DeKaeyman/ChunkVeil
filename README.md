@@ -6,6 +6,12 @@ The goal is to prevent clients from learning about hidden underground blocks, ca
 
 The plugin is primarily built for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake blocks need different choices.
 
+## Downloads
+
+Download release jars from the GitHub Releases page.
+
+For development builds, use the GitHub Actions build artifact from the latest successful workflow run.
+
 ## Requirements
 
 - Paper 1.21.11
@@ -234,3 +240,19 @@ The recommended default is `hide-air: false`. It avoids rewriting huge amounts o
 Most CPU cost happens when players receive new chunks, move into new chunks, or reveal hidden areas. Idle players should be cheap.
 
 Use `/chunkveil status` for quick counters and `/spark profiler start --timeout 600` for real profiling on a live server.
+
+## Bug Reports
+
+Please use GitHub Issues and include:
+
+- ChunkVeil version
+- Paper version
+- ProtocolLib version
+- Full startup log or relevant error log
+- Config file
+- Steps to reproduce
+- Whether the issue happens with only ChunkVeil and ProtocolLib installed
+
+## License
+
+ChunkVeil is licensed under the MIT License. See [LICENSE](LICENSE).
