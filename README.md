@@ -96,6 +96,21 @@ Global per-player setting. How many solid blocks a ray can pass through before s
 `view-reveal-refresh-millis`
 Global per-player setting. Minimum time between view scans for each player.
 
+## Language File
+
+ChunkVeil creates `plugins/ChunkVeil/lang.yml` on first start.
+
+`prefix`
+Prefix used before command messages.
+
+`states.enabled` and `states.disabled`
+Colored labels used in status/debug messages.
+
+`commands`
+All command replies. Placeholders use `{name}` syntax, for example `{players}`, `{chunks}`, `{version}`, and `{label}`.
+
+Use `/chunkveil reload` after editing `lang.yml`.
+
 ## Examples
 
 Overworld only:
@@ -170,6 +185,12 @@ Reloads the config and refreshes online players.
 `/chunkveil refresh`
 Forces a refresh for all online players.
 
+`/chunkveil disable`
+Emergency switch. Stops ChunkVeil packet/listener processing, shows hidden entities again, and refreshes sent chunks back to the real world state for online players. The plugin stays loaded so commands still work.
+
+`/chunkveil enable`
+Starts the ChunkVeil runtime again after `/chunkveil disable`.
+
 `/chunkveil debug on`
 Logs a compact metrics summary every 30 seconds.
 
@@ -194,6 +215,9 @@ Allows `/chunkveil reload`.
 
 `chunkveil.refresh`
 Allows `/chunkveil refresh`.
+
+`chunkveil.toggle`
+Allows `/chunkveil disable` and `/chunkveil enable`.
 
 `chunkveil.debug`
 Allows `/chunkveil debug on/off`.

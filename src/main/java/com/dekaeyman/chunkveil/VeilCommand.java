@@ -3,15 +3,15 @@ package com.dekaeyman.chunkveil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "reload", "refresh", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "reload", "refresh", "disable", "enable", "debug", "version");
 
     private final ChunkVeilPlugin plugin;
 
@@ -31,8 +31,12 @@ final class VeilCommand implements TabExecutor {
             case "status" -> sendStatus(sender);
             case "reload" -> reload(sender);
             case "refresh" -> refresh(sender);
+            case "disable", "off" -> disable(sender);
+            case "enable", "on" -> enable(sender);
             case "debug" -> debug(sender, args);
-            case "version" -> sender.sendMessage(prefix() + "Version " + plugin.getDescription().getVersion());
+            case "version" -> sender.sendMessage(lang().message("commands.version", Map.of(
+                    "version", plugin.getDescription().getVersion()
+            )));
             default -> sendHelp(sender, label);
         }
         return true;
@@ -57,11 +61,9 @@ final class VeilCommand implements TabExecutor {
     }
 
     private void sendHelp(CommandSender sender, String label) {
-        sender.sendMessage(prefix() + "/" + label + " status");
-        sender.sendMessage(prefix() + "/" + label + " reload");
-        sender.sendMessage(prefix() + "/" + label + " refresh");
-        sender.sendMessage(prefix() + "/" + label + " debug <on|off>");
-        sender.sendMessage(prefix() + "/" + label + " version");
+        for (String line : lang().messages("commands.help", Map.of("label", label))) {
+            sender.sendMessage(line);
+        }
     }
 
     private void sendStatus(CommandSender sender) {
@@ -72,17 +74,39 @@ final class VeilCommand implements TabExecutor {
 
         VeilSettings settings = plugin.settings();
         VeilMetrics metrics = plugin.metrics();
-        sender.sendMessage(prefix() + "Status");
-        sender.sendMessage(ChatColor.GRAY + "Worlds: " + ChatColor.WHITE + settings.enabledWorlds());
+        sender.sendMessage(lang().message("commands.status.title"));
+        sender.sendMessage(lang().message("commands.status.runtime", Map.of("state", state(plugin.veilRuntimeEnabled()))));
+        sender.sendMessage(lang().message("commands.status.worlds", Map.of("worlds", settings.enabledWorlds())));
         if (!settings.worlds().isEmpty()) {
-            sender.sendMessage(ChatColor.GRAY + "World overrides: " + ChatColor.WHITE + settings.worlds().keySet());
+            sender.sendMessage(lang().message("commands.status.world-overrides", Map.of("worlds", settings.worlds().keySet())));
         }
-        sender.sendMessage(ChatColor.GRAY + "Debug: " + enabled(plugin.debugEnabled()));
-        sender.sendMessage(ChatColor.GRAY + "Tracked players: " + ChatColor.WHITE + plugin.veilEngine().trackedPlayerCount() + ChatColor.GRAY + ", queued chunks: " + ChatColor.WHITE + plugin.veilEngine().queuedChunkCount());
-        sender.sendMessage(ChatColor.GRAY + "ProtocolLib listener: " + enabled(plugin.protocolListenerActive()) + ChatColor.GRAY + ", packet rewrite: " + enabled(plugin.packetRewriteActive()));
-        sender.sendMessage(ChatColor.GRAY + "Chunk packets: " + ChatColor.WHITE + metrics.chunkPackets() + ChatColor.GRAY + ", hidden: " + ChatColor.WHITE + metrics.hiddenChunkPackets() + ChatColor.GRAY + ", rewritten: " + ChatColor.WHITE + metrics.rewrittenChunkPackets() + ChatColor.GRAY + ", unrewritten hidden: " + ChatColor.WHITE + metrics.unrewrittenHiddenChunkPackets());
-        sender.sendMessage(ChatColor.GRAY + "Updates: block=" + ChatColor.WHITE + metrics.blockChangesRewritten() + ChatColor.GRAY + ", multi=" + ChatColor.WHITE + metrics.multiBlockChangesRewritten() + ChatColor.GRAY + ", block entities=" + ChatColor.WHITE + metrics.blockEntityUpdatesCancelled());
-        sender.sendMessage(ChatColor.GRAY + "Entities: spawns=" + ChatColor.WHITE + metrics.entitySpawnsCancelled() + ChatColor.GRAY + ", packets=" + ChatColor.WHITE + metrics.entityPacketsCancelled());
+        sender.sendMessage(lang().message("commands.status.debug", Map.of("state", state(plugin.debugEnabled()))));
+        VeilEngine veilEngine = plugin.veilEngine();
+        int trackedPlayers = veilEngine == null ? 0 : veilEngine.trackedPlayerCount();
+        int queuedChunks = veilEngine == null ? 0 : veilEngine.queuedChunkCount();
+        sender.sendMessage(lang().message("commands.status.tracked", Map.of(
+                "players", trackedPlayers,
+                "chunks", queuedChunks
+        )));
+        sender.sendMessage(lang().message("commands.status.protocol", Map.of(
+                "listener", state(plugin.protocolListenerActive()),
+                "rewrite", state(plugin.packetRewriteActive())
+        )));
+        sender.sendMessage(lang().message("commands.status.chunk-packets", Map.of(
+                "packets", metrics.chunkPackets(),
+                "hidden", metrics.hiddenChunkPackets(),
+                "rewritten", metrics.rewrittenChunkPackets(),
+                "unrewritten", metrics.unrewrittenHiddenChunkPackets()
+        )));
+        sender.sendMessage(lang().message("commands.status.updates", Map.of(
+                "block", metrics.blockChangesRewritten(),
+                "multi", metrics.multiBlockChangesRewritten(),
+                "block_entities", metrics.blockEntityUpdatesCancelled()
+        )));
+        sender.sendMessage(lang().message("commands.status.entities", Map.of(
+                "spawns", metrics.entitySpawnsCancelled(),
+                "packets", metrics.entityPacketsCancelled()
+        )));
     }
 
     private void reload(CommandSender sender) {
@@ -92,7 +116,7 @@ final class VeilCommand implements TabExecutor {
         }
 
         plugin.reloadVeil();
-        sender.sendMessage(prefix() + "Reloaded config and refreshed online players.");
+        sender.sendMessage(lang().message("commands.reload"));
     }
 
     private void refresh(CommandSender sender) {
@@ -100,11 +124,46 @@ final class VeilCommand implements TabExecutor {
             deny(sender);
             return;
         }
+        if (!plugin.veilRuntimeEnabled() || plugin.veilEngine() == null) {
+            sender.sendMessage(lang().message("commands.refresh-disabled"));
+            return;
+        }
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             plugin.veilEngine().rescanPlayer(player);
         }
-        sender.sendMessage(prefix() + "Refreshed " + Bukkit.getOnlinePlayers().size() + " online players.");
+        sender.sendMessage(lang().message("commands.refresh", Map.of("players", Bukkit.getOnlinePlayers().size())));
+    }
+
+    private void disable(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.toggle")) {
+            deny(sender);
+            return;
+        }
+        if (!plugin.veilRuntimeEnabled()) {
+            sender.sendMessage(lang().message("commands.disable.already"));
+            return;
+        }
+
+        VeilRestoreResult restoreResult = plugin.disableVeilRuntime();
+        sender.sendMessage(lang().message("commands.disable.done", Map.of(
+                "players", restoreResult.players(),
+                "chunks", restoreResult.chunks()
+        )));
+    }
+
+    private void enable(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.toggle")) {
+            deny(sender);
+            return;
+        }
+        if (plugin.veilRuntimeEnabled()) {
+            sender.sendMessage(lang().message("commands.enable.already"));
+            return;
+        }
+
+        plugin.enableVeilRuntime();
+        sender.sendMessage(lang().message("commands.enable.done"));
     }
 
     private void debug(CommandSender sender, String[] args) {
@@ -113,13 +172,13 @@ final class VeilCommand implements TabExecutor {
             return;
         }
         if (args.length < 2 || (!args[1].equalsIgnoreCase("on") && !args[1].equalsIgnoreCase("off"))) {
-            sender.sendMessage(prefix() + "Usage: /chunkveil debug <on|off>");
+            sender.sendMessage(lang().message("commands.debug.usage"));
             return;
         }
 
         boolean enabled = args[1].equalsIgnoreCase("on");
         plugin.setDebugEnabled(enabled);
-        sender.sendMessage(prefix() + "Debug " + (enabled ? "enabled" : "disabled") + ".");
+        sender.sendMessage(lang().message("commands.debug.changed", Map.of("state", state(enabled))));
     }
 
     private boolean canUse(CommandSender sender, String permission) {
@@ -132,19 +191,20 @@ final class VeilCommand implements TabExecutor {
             case "status" -> "chunkveil.status";
             case "debug" -> "chunkveil.debug";
             case "refresh" -> "chunkveil.refresh";
+            case "disable", "enable" -> "chunkveil.toggle";
             default -> "chunkveil.admin";
         };
     }
 
-    private String enabled(boolean enabled) {
-        return enabled ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled";
+    private String state(boolean enabled) {
+        return lang().state(enabled);
     }
 
     private void deny(CommandSender sender) {
-        sender.sendMessage(prefix() + ChatColor.RED + "You do not have permission.");
+        sender.sendMessage(lang().message("commands.no-permission"));
     }
 
-    private String prefix() {
-        return ChatColor.DARK_AQUA + "[ChunkVeil] " + ChatColor.GRAY;
+    private VeilLang lang() {
+        return plugin.lang();
     }
 }

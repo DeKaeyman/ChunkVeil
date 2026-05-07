@@ -64,6 +64,27 @@ final class VeilEngine {
         states.clear();
     }
 
+    VeilRestoreResult restoreAllPlayersToRealChunks() {
+        if (workerTask != null) {
+            workerTask.cancel();
+            workerTask = null;
+        }
+
+        int restoredPlayers = 0;
+        int refreshedChunks = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            PlayerVeilState state = states.get(player.getUniqueId());
+            if (state != null) {
+                revealHiddenEntities(player, state);
+                state.clear();
+            }
+            restoredPlayers++;
+            refreshedChunks += refreshSentChunks(player);
+        }
+        states.clear();
+        return new VeilRestoreResult(restoredPlayers, refreshedChunks);
+    }
+
     void refreshPlayer(Player player) {
         if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
             PlayerVeilState state = states.remove(player.getUniqueId());
@@ -339,6 +360,23 @@ final class VeilEngine {
                 state.forgetEntity(entity.getEntityId());
             }
         }
+    }
+
+    private int refreshSentChunks(Player player) {
+        int refreshedChunks = 0;
+        for (Chunk chunk : player.getSentChunks()) {
+            World world = chunk.getWorld();
+            if (!settings.isEnabledWorld(world)) {
+                continue;
+            }
+            if (!world.isChunkLoaded(chunk.getX(), chunk.getZ()) || !player.isChunkSent(chunk)) {
+                continue;
+            }
+            if (world.refreshChunk(chunk.getX(), chunk.getZ())) {
+                refreshedChunks++;
+            }
+        }
+        return refreshedChunks;
     }
 
     private VeilMode modeFor(Player player, int chunkX, int chunkZ) {

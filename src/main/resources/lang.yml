@@ -1,0 +1,46 @@
+prefix: "&3[ChunkVeil] &7"
+
+states:
+  enabled: "&aenabled"
+  disabled: "&cdisabled"
+
+commands:
+  no-permission: "&cYou do not have permission."
+  version: "Version &f{version}"
+
+  help:
+    - "/{label} status"
+    - "/{label} reload"
+    - "/{label} refresh"
+    - "/{label} disable"
+    - "/{label} enable"
+    - "/{label} debug <on|off>"
+    - "/{label} version"
+
+  status:
+    title: "Status"
+    runtime: "&7Runtime: {state}"
+    worlds: "&7Worlds: &f{worlds}"
+    world-overrides: "&7World overrides: &f{worlds}"
+    debug: "&7Debug: {state}"
+    tracked: "&7Tracked players: &f{players}&7, queued chunks: &f{chunks}"
+    protocol: "&7ProtocolLib listener: {listener}&7, packet rewrite: {rewrite}"
+    chunk-packets: "&7Chunk packets: &f{packets}&7, hidden: &f{hidden}&7, rewritten: &f{rewritten}&7, unrewritten hidden: &f{unrewritten}"
+    updates: "&7Updates: block=&f{block}&7, multi=&f{multi}&7, block entities=&f{block_entities}"
+    entities: "&7Entities: spawns=&f{spawns}&7, packets=&f{packets}"
+
+  reload: "Reloaded config and language, then refreshed online players."
+  refresh: "Refreshed &f{players}&7 online players."
+  refresh-disabled: "Runtime is disabled. Use &f/chunkveil enable&7 to start it again."
+
+  disable:
+    already: "Runtime is already disabled."
+    done: "Runtime disabled. Restored &f{players}&7 players and refreshed &f{chunks}&7 chunks."
+
+  enable:
+    already: "Runtime is already enabled."
+    done: "Runtime enabled."
+
+  debug:
+    usage: "Usage: &f/chunkveil debug <on|off>"
+    changed: "Debug {state}&7."

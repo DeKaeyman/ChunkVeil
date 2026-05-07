@@ -9,13 +9,16 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     private VeilEngine veilEngine;
     private ProtocolChunkListener protocolChunkListener;
     private VeilSettings settings;
+    private VeilLang lang;
     private VeilMetrics metrics;
     private boolean debugEnabled;
+    private boolean veilRuntimeEnabled;
     private BukkitTask debugTask;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        this.lang = VeilLang.load(this);
         this.metrics = new VeilMetrics();
 
         startVeil();
@@ -31,10 +34,43 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         boolean restoreDebug = debugEnabled;
         stopVeil();
         reloadConfig();
+        this.lang = VeilLang.load(this);
         startVeil();
         if (restoreDebug) {
             setDebugEnabled(true);
         }
+    }
+
+    VeilRestoreResult disableVeilRuntime() {
+        if (!veilRuntimeEnabled) {
+            return new VeilRestoreResult(0, 0);
+        }
+
+        setDebugEnabled(false);
+        if (protocolChunkListener != null) {
+            protocolChunkListener.stop();
+            protocolChunkListener = null;
+        }
+
+        VeilRestoreResult restoreResult = new VeilRestoreResult(0, 0);
+        if (veilEngine != null) {
+            restoreResult = veilEngine.restoreAllPlayersToRealChunks();
+            veilEngine = null;
+        }
+
+        HandlerList.unregisterAll(this);
+        veilRuntimeEnabled = false;
+        getLogger().warning("ChunkVeil runtime disabled. Restored "
+                + restoreResult.players() + " players and refreshed "
+                + restoreResult.chunks() + " chunks.");
+        return restoreResult;
+    }
+
+    void enableVeilRuntime() {
+        if (veilRuntimeEnabled) {
+            return;
+        }
+        startVeil();
     }
 
     VeilEngine veilEngine() {
@@ -43,6 +79,10 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     VeilSettings settings() {
         return settings;
+    }
+
+    VeilLang lang() {
+        return lang;
     }
 
     VeilMetrics metrics() {
@@ -72,13 +112,21 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return protocolChunkListener != null && protocolChunkListener.packetRewriteActive();
     }
 
+    boolean veilRuntimeEnabled() {
+        return veilRuntimeEnabled;
+    }
+
     private void startVeil() {
+        if (veilRuntimeEnabled) {
+            return;
+        }
         this.settings = VeilSettings.load(this);
         this.veilEngine = new VeilEngine(this, settings, metrics);
         this.veilEngine.start();
         this.protocolChunkListener = ProtocolChunkListener.start(this, veilEngine, settings, metrics);
 
         getServer().getPluginManager().registerEvents(new VeilListener(veilEngine), this);
+        veilRuntimeEnabled = true;
         getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
     }
 
@@ -97,6 +145,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             veilEngine.stop();
             veilEngine = null;
         }
+        veilRuntimeEnabled = false;
     }
 
     private void registerCommand() {
