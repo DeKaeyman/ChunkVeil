@@ -1,7 +1,8 @@
 # ChunkVeil
 
-ChunkVeil is a Paper + ProtocolLib anti-xray style plugin for Minecraft 1.21.11.
+ChunkVeil is a Paper + ProtocolLib anti-xray, anti-ESP, anti-freecam, and anti-PieChart-abuse plugin for Minecraft 1.21.11.
 It hides underground chunk sections from each player before the client receives them, then reveals chunks only when the player can actually reach them with the view scan.
+The goal is to prevent clients from learning about hidden underground blocks, caves, bases, block entities, and optional entities before that information should be visible.
 
 The plugin is primarily built for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake blocks need different choices.
 
@@ -15,6 +16,7 @@ The plugin is primarily built for the overworld. Nether and End can be configure
 
 - Rewrites outgoing chunk packets for hidden chunks.
 - Replaces underground non-fake blocks with a configurable fake block.
+- Reduces xray, ESP, freecam, and PieChart-style underground information leaks.
 - Optionally hides air, but this is disabled by default for performance.
 - Reveals chunks using a 360-degree ray scan instead of a simple distance radius.
 - Keeps revealed chunks visible until they leave the player's render distance.
