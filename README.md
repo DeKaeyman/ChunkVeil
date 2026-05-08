@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner-1.png" alt="ChunkVeil - Packet-level underground protection" width="100%">
+  <img src="docs/assets/simple/banner-1.png" alt="ChunkVeil - Packet-level underground protection" width="100%">
 </p>
 
 # ChunkVeil
@@ -19,7 +19,7 @@ For development builds, use the GitHub Actions artifact from the latest successf
 ## Requirements
 
 <p align="center">
-  <img src="docs/assets/banner-2.png" alt="ChunkVeil requirements" width="100%">
+  <img src="docs/assets/simple/banner-2.png" alt="ChunkVeil requirements" width="100%">
 </p>
 
 - Paper 1.21.11
@@ -35,7 +35,7 @@ ChunkVeil currently targets Paper 1.21.11. Support for other versions may be add
 ## Features
 
 <p align="center">
-  <img src="docs/assets/banner-3.png" alt="ChunkVeil features" width="100%">
+  <img src="docs/assets/simple/banner-3.png" alt="ChunkVeil features" width="100%">
 </p>
 
 - Rewrites outgoing chunk packets for hidden underground sections.
@@ -50,7 +50,7 @@ ChunkVeil currently targets Paper 1.21.11. Support for other versions may be add
 ## How It Works
 
 <p align="center">
-  <img src="docs/assets/banner-4.png" alt="How ChunkVeil works" width="100%">
+  <img src="docs/assets/simple/banner-4.png" alt="How ChunkVeil works" width="100%">
 </p>
 
 1. Underground data starts hidden from the player.
