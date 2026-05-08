@@ -74,7 +74,7 @@ With ChunkVeil disabled, underground terrain, caves, ores, structures, and hidde
 ### ChunkVeil with `hide-air: false`
 
 <p align="center">
-  <img src="docs/assets/simple/chunkvail-air.png" alt="ChunkVeil hiding underground blocks while leaving air visible" width="100%">
+  <img src="docs/assets/simple/chunkveil-air.png" alt="ChunkVeil hiding underground blocks while leaving air visible" width="100%">
 </p>
 
 This is the recommended default. Air stays air, so caves and empty pockets may still appear as open space, but solid hidden blocks are replaced with the configured fake block, such as `DEEPSLATE`. This is faster and reduces the most useful block information without rewriting huge amounts of air.
@@ -82,7 +82,7 @@ This is the recommended default. Air stays air, so caves and empty pockets may s
 ### ChunkVeil with `hide-air: true`
 
 <p align="center">
-  <img src="docs/assets/simple/chunkveil-no-air.png" alt="ChunkVeil hiding underground blocks and air" width="100%">
+  <img src="docs/assets/simple/chunkvail-no-air.png" alt="ChunkVeil hiding underground blocks and air" width="100%">
 </p>
 
 When `hide-air` is enabled, ChunkVeil also replaces underground air with the fake block. This makes cave shapes, rooms, and hidden base layouts much harder to read from the client side, but it costs more because many more blocks need to be rewritten.
