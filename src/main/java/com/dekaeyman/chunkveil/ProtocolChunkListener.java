@@ -49,7 +49,7 @@ final class ProtocolChunkListener {
         listener.initializeBlockRewriter(settings);
         listener.register(veilEngine, settings);
         plugin.getLogger().info("ProtocolLib chunk listener enabled.");
-        plugin.getLogger().info("For Paper 1.21.11, use a ProtocolLib dev build or 5.4.1 runtime jar; "
+        plugin.getLogger().info("For newer Paper 1.21.x builds, use a compatible ProtocolLib dev build or 5.4.1 runtime jar; "
                 + "5.4.0 stable only officially supports up to 1.21.8 chunk wrappers.");
         return listener;
     }
@@ -78,7 +78,7 @@ final class ProtocolChunkListener {
     private void register(VeilEngine veilEngine, VeilSettings settings) {
         protocolManager.addPacketListener(new PacketAdapter(
                 plugin,
-                ListenerPriority.NORMAL,
+                ListenerPriority.HIGHEST,
                 supportedServerPackets()
         ) {
             @Override
@@ -528,7 +528,7 @@ final class ProtocolChunkListener {
 
         plugin.getLogger().warning(reason + ": " + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
         plugin.getLogger().warning("Disabling ProtocolLib WrappedLevelChunkData features for this run. "
-                + "Your ProtocolLib build appears incompatible with Paper 1.21.11 chunk-data wrappers.");
+                + "Your ProtocolLib build appears incompatible with this Paper 1.21.x chunk-data format.");
     }
 
     private WrappedBlockData fakeBlockData(World world) {

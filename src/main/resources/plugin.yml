@@ -4,6 +4,8 @@ main: com.dekaeyman.chunkveil.ChunkVeilPlugin
 api-version: '1.21'
 depend:
   - ProtocolLib
+softdepend:
+  - Orebfuscator
 commands:
   chunkveil:
     description: Admin tools for ChunkVeil.

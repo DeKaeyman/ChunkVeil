@@ -22,7 +22,7 @@ For development builds, use the GitHub Actions artifact from the latest successf
   <img src="docs/assets/simple/banner-2.png" alt="ChunkVeil requirements" width="100%">
 </p>
 
-- Paper 1.21.11
+- Paper 1.21.x
 - Java 21
 - ProtocolLib compatible with your Paper/Minecraft version
 
@@ -30,7 +30,7 @@ ProtocolLib version matters. Use the ProtocolLib build recommended for your serv
 
 https://www.spigotmc.org/resources/protocollib.1997/
 
-ChunkVeil currently targets Paper 1.21.11. Support for other versions may be added later.
+ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
 
 ## Features
 
@@ -89,9 +89,9 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 
 ## Installation
 
-1. Install Paper 1.21.11.
+1. Install Paper 1.21.x.
 2. Install Java 21.
-3. Install a ProtocolLib build compatible with Paper 1.21.11.
+3. Install a ProtocolLib build compatible with your Paper version.
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
 5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.
 6. Run `/chunkveil status` in-game or from console.
@@ -150,6 +150,14 @@ Hides mobs, item drops, minecarts, armor stands, item frames, and similar entiti
 
 `hide-players`
 Also hides players below the hidden Y range. Default is `false` because hiding players can affect PvP and moderation.
+
+## Compatibility With Anti-Xray
+
+ChunkVeil can run alongside Paper's built-in anti-xray and packet-based plugins such as Orebfuscator. Paper anti-xray usually runs before ProtocolLib sees the outgoing chunk packet, and ChunkVeil then applies its underground hiding pass to the packet the player is about to receive.
+
+ChunkVeil's ProtocolLib listener uses a late packet priority and declares Orebfuscator as an optional soft dependency so, when both plugins are installed, ChunkVeil is more likely to apply its hidden-chunk rewrite after other packet modifiers. Hidden chunks and hidden block updates are still rewritten for players who already have the chunk loaded.
+
+When another plugin also rewrites the same chunk, block-change, or multi-block-change packets after ChunkVeil, that plugin may change the final fake block appearance. It should not reveal real underground blocks unless that plugin deliberately restores real block data. For the strictest protection, test your exact plugin stack with `/chunkveil status`, an xray/freecam client, and both `hide-air: false` and `hide-air: true` depending on how much cave/base shape you want to conceal.
 
 ## Commands
 
