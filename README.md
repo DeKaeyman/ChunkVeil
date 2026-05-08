@@ -59,6 +59,34 @@ ChunkVeil currently targets Paper 1.21.11. Support for other versions may be add
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 
+## Visual Comparison
+
+These screenshots use an xray-style view so the difference is easy to see.
+
+### Without ChunkVeil
+
+<p align="center">
+  <img src="docs/assets/simple/chunveil-pre.png" alt="Underground terrain exposed without ChunkVeil" width="100%">
+</p>
+
+With ChunkVeil disabled, underground terrain, caves, ores, structures, and hidden spaces can be visible to modified clients before the player should know about them.
+
+### ChunkVeil with `hide-air: false`
+
+<p align="center">
+  <img src="docs/assets/simple/chunkvail-no-air.png" alt="ChunkVeil hiding underground blocks while leaving air visible" width="100%">
+</p>
+
+This is the recommended default. Air stays air, so caves and empty pockets may still appear as open space, but solid hidden blocks are replaced with the configured fake block, such as `DEEPSLATE`. This is faster and reduces the most useful block information without rewriting huge amounts of air.
+
+### ChunkVeil with `hide-air: true`
+
+<p align="center">
+  <img src="docs/assets/simple/chunkveil-air.png" alt="ChunkVeil hiding underground blocks and air" width="100%">
+</p>
+
+When `hide-air` is enabled, ChunkVeil also replaces underground air with the fake block. This makes cave shapes, rooms, and hidden base layouts much harder to read from the client side, but it costs more because many more blocks need to be rewritten.
+
 ## Installation
 
 1. Install Paper 1.21.11.
