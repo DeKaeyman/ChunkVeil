@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+Release packaging fix.
+
+- Run Gradle on Java 21 in GitHub Actions while keeping Java 25 available for Paper 26.1 builds.
+- Renamed the Paper 1.21 artifact to include `paper-1.21` in the jar name.
+
 ## 0.2.1
 
 Paper 26.1 compatibility release.

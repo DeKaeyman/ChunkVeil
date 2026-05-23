@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.dekaeyman'
-version = '0.2.1'
+version = '0.2.2'
 
 def paper121MinecraftVersion = "1.21.11"
 def paper121ApiVersion = "1.21.11-R0.1-SNAPSHOT"
@@ -37,6 +37,10 @@ dependencies {
 tasks.named("runServer") {
     minecraftVersion(paper121MinecraftVersion)
     pluginJars(tasks.named("jar").flatMap { it.archiveFile })
+}
+
+tasks.named("jar") {
+    archiveClassifier.set("paper-1.21")
 }
 
 tasks.register("paper261Jar", Jar) {
