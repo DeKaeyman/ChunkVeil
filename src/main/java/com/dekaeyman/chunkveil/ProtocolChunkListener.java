@@ -29,6 +29,7 @@ final class ProtocolChunkListener {
     private final ProtocolManager protocolManager;
     private final VeilMetrics metrics;
     private final VeilSettings settings;
+    private final boolean chunkPacketRewriteSupported;
     private final AtomicBoolean chunkDataWrappersBroken = new AtomicBoolean();
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean multiBlockChangeRewriteBroken = new AtomicBoolean();
@@ -41,6 +42,7 @@ final class ProtocolChunkListener {
         this.protocolManager = protocolManager;
         this.metrics = metrics;
         this.settings = settings;
+        this.chunkPacketRewriteSupported = supportsChunkPacketRewrite();
     }
 
     static ProtocolChunkListener start(Plugin plugin, VeilEngine veilEngine, VeilSettings settings, VeilMetrics metrics) {
@@ -55,6 +57,14 @@ final class ProtocolChunkListener {
     }
 
     private void initializeBlockRewriter(VeilSettings settings) {
+        if (!chunkPacketRewriteSupported) {
+            packetBlockRewriteBroken.set(true);
+            plugin.getLogger().info("Packet section rewrite disabled for Minecraft "
+                    + Bukkit.getMinecraftVersion()
+                    + "; hidden chunks will be masked after the chunk is sent.");
+            return;
+        }
+
         try {
             this.airBlockStateId = NmsBlockStateIds.defaultStateId(Material.AIR);
             for (VeilWorldSettings worldSettings : settings.worlds().values()) {
@@ -129,10 +139,19 @@ final class ProtocolChunkListener {
                 if (packetRewritten) {
                     Bukkit.getScheduler().runTask(plugin, () -> veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ));
                 } else if (hidden) {
-                    event.setCancelled(true);
+                    if (chunkPacketRewriteSupported) {
+                        event.setCancelled(true);
+                    } else {
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> veilEngine.maskChunkAfterRealPacket(player, chunkX, chunkZ), 1L);
+                    }
                 }
             }
         });
+    }
+
+    private boolean supportsChunkPacketRewrite() {
+        String minecraftVersion = Bukkit.getMinecraftVersion();
+        return minecraftVersion == null || !minecraftVersion.startsWith("26.");
     }
 
     private List<PacketType> supportedServerPackets() {

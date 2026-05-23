@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+Paper 26.1 compatibility release.
+
+- Added separate Paper 26.1.x build and run targets.
+- Added Java 25 toolchain support for Paper 26.1.x.
+- Updated the Gradle wrapper and run-paper plugin for newer Paper downloads.
+- Disabled raw chunk packet rewriting on Minecraft 26.x and fall back to post-send chunk masking.
+- Kept Paper 1.21.11 on the existing packet rewrite path.
+
 ## 0.2.0
 
 First stable release.
