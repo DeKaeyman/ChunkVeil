@@ -9,7 +9,19 @@ import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.Plugin;
 
-record VeilSettings(Map<String, VeilWorldSettings> worlds, int viewRevealHorizontalRays, int viewRevealVerticalRays, int viewRevealOcclusionGraceBlocks, int viewRevealRefreshMillis) {
+record VeilSettings(
+        Map<String, VeilWorldSettings> worlds,
+        int viewRevealFrontHorizontalRays,
+        int viewRevealSideHorizontalRays,
+        int viewRevealBackHorizontalRays,
+        int viewRevealVerticalRays,
+        int viewRevealOcclusionGraceBlocks,
+        int viewRevealRefreshMillis,
+        int viewRevealForceRefreshMillis,
+        double viewRevealMoveThresholdBlocks,
+        float viewRevealYawThresholdDegrees,
+        float viewRevealPitchThresholdDegrees
+) {
     static VeilSettings load(Plugin plugin) {
         ConfigurationSection config = plugin.getConfig();
         Map<String, VeilWorldSettings> worlds = new HashMap<>();
@@ -27,12 +39,43 @@ record VeilSettings(Map<String, VeilWorldSettings> worlds, int viewRevealHorizon
             }
         }
 
-        int viewRevealHorizontalRays = Math.max(12, config.getInt("view-reveal-horizontal-rays", 64));
+        int legacyHorizontalRays = Math.max(12, config.getInt("view-reveal-horizontal-rays", 32));
+        int viewRevealFrontHorizontalRays = Math.max(4, config.getInt(
+                "view-reveal-front-horizontal-rays",
+                Math.max(8, Math.round(legacyHorizontalRays * 0.56F))
+        ));
+        int viewRevealSideHorizontalRays = Math.max(2, config.getInt(
+                "view-reveal-side-horizontal-rays",
+                Math.max(4, Math.round(legacyHorizontalRays * 0.22F))
+        ));
+        int viewRevealBackHorizontalRays = Math.max(1, config.getInt(
+                "view-reveal-back-horizontal-rays",
+                Math.max(2, Math.round(legacyHorizontalRays * 0.12F))
+        ));
         int viewRevealVerticalRays = Math.max(3, config.getInt("view-reveal-vertical-rays", 13));
         int viewRevealOcclusionGraceBlocks = Math.max(0, config.getInt("view-reveal-occlusion-grace-blocks", 2));
         int viewRevealRefreshMillis = Math.max(50, config.getInt("view-reveal-refresh-millis", 150));
+        int viewRevealForceRefreshMillis = Math.max(
+                viewRevealRefreshMillis,
+                config.getInt("view-reveal-force-refresh-millis", 1200)
+        );
+        double viewRevealMoveThresholdBlocks = Math.max(0.0D, config.getDouble("view-reveal-move-threshold-blocks", 3.0D));
+        float viewRevealYawThresholdDegrees = Math.max(0.0F, (float) config.getDouble("view-reveal-yaw-threshold-degrees", 12.0D));
+        float viewRevealPitchThresholdDegrees = Math.max(0.0F, (float) config.getDouble("view-reveal-pitch-threshold-degrees", 8.0D));
 
-        return new VeilSettings(Map.copyOf(worlds), viewRevealHorizontalRays, viewRevealVerticalRays, viewRevealOcclusionGraceBlocks, viewRevealRefreshMillis);
+        return new VeilSettings(
+                Map.copyOf(worlds),
+                viewRevealFrontHorizontalRays,
+                viewRevealSideHorizontalRays,
+                viewRevealBackHorizontalRays,
+                viewRevealVerticalRays,
+                viewRevealOcclusionGraceBlocks,
+                viewRevealRefreshMillis,
+                viewRevealForceRefreshMillis,
+                viewRevealMoveThresholdBlocks,
+                viewRevealYawThresholdDegrees,
+                viewRevealPitchThresholdDegrees
+        );
     }
 
     boolean isEnabledWorld(World world) {

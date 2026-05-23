@@ -2,12 +2,20 @@
 # but disabled by default because their terrain and fake-block choices differ.
 
 # Global performance tuning.
-# Higher ray counts reveal more accurately but cost more CPU.
-# These ray settings apply per player: every tracked player has their own view scan.
-view-reveal-horizontal-rays: 64
-view-reveal-vertical-rays: 13
+# Higher ray counts reveal more accurately but cost more CPU. The reveal scan
+# is weighted toward where the player is looking: front > sides > behind.
+view-reveal-front-horizontal-rays: 10
+view-reveal-side-horizontal-rays: 5
+view-reveal-back-horizontal-rays: 3
+view-reveal-vertical-rays: 10
 view-reveal-occlusion-grace-blocks: 2
 view-reveal-refresh-millis: 150
+# Skip rescans while a player stays in nearly the same place and view angle.
+# The force interval catches edge cases such as sparse back-facing rays.
+view-reveal-force-refresh-millis: 1200
+view-reveal-move-threshold-blocks: 3.0
+view-reveal-yaw-threshold-degrees: 12.0
+view-reveal-pitch-threshold-degrees: 8.0
 
 # World settings. Each world is independent; no block/entity settings are global.
 worlds:

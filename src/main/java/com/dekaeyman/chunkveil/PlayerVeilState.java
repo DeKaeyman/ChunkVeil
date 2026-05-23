@@ -18,6 +18,12 @@ final class PlayerVeilState {
     private final Map<Integer, UUID> hiddenEntityUuidsById = new ConcurrentHashMap<>();
     private final Set<ChunkKey> visibleChunks = ConcurrentHashMap.newKeySet();
     private volatile long lastViewRevealRefreshMillis;
+    private String lastViewRevealWorldName;
+    private double lastViewRevealX;
+    private double lastViewRevealY;
+    private double lastViewRevealZ;
+    private float lastViewRevealYaw;
+    private float lastViewRevealPitch;
 
     void enqueue(ChunkKey chunkKey, VeilMode mode) {
         enqueue(chunkKey, mode, false);
@@ -120,14 +126,42 @@ final class PlayerVeilState {
         return forgottenChunks;
     }
 
-    boolean canRefreshViewReveal(int refreshMillis) {
+    boolean shouldRefreshViewReveal(LocationSnapshot snapshot, VeilSettings settings) {
         long now = System.currentTimeMillis();
-        if (now - lastViewRevealRefreshMillis < refreshMillis) {
+        long elapsedMillis = now - lastViewRevealRefreshMillis;
+        if (elapsedMillis < settings.viewRevealRefreshMillis()) {
             return false;
         }
 
+        if (lastViewRevealWorldName != null
+                && lastViewRevealWorldName.equals(snapshot.worldName())
+                && elapsedMillis < settings.viewRevealForceRefreshMillis()
+                && distanceSquaredToLastScan(snapshot) < settings.viewRevealMoveThresholdBlocks() * settings.viewRevealMoveThresholdBlocks()
+                && yawDelta(snapshot.yaw(), lastViewRevealYaw) < settings.viewRevealYawThresholdDegrees()
+                && Math.abs(snapshot.pitch() - lastViewRevealPitch) < settings.viewRevealPitchThresholdDegrees()) {
+            return false;
+        }
+
+        lastViewRevealWorldName = snapshot.worldName();
+        lastViewRevealX = snapshot.x();
+        lastViewRevealY = snapshot.y();
+        lastViewRevealZ = snapshot.z();
+        lastViewRevealYaw = snapshot.yaw();
+        lastViewRevealPitch = snapshot.pitch();
         lastViewRevealRefreshMillis = now;
         return true;
+    }
+
+    private double distanceSquaredToLastScan(LocationSnapshot snapshot) {
+        double dx = snapshot.x() - lastViewRevealX;
+        double dy = snapshot.y() - lastViewRevealY;
+        double dz = snapshot.z() - lastViewRevealZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private float yawDelta(float yaw, float previousYaw) {
+        float delta = Math.abs(yaw - previousYaw) % 360.0F;
+        return delta > 180.0F ? 360.0F - delta : delta;
     }
 
     void forgetChunk(ChunkKey chunkKey) {
@@ -153,5 +187,9 @@ final class PlayerVeilState {
         clearHiddenEntities();
         visibleChunks.clear();
         lastViewRevealRefreshMillis = 0L;
+        lastViewRevealWorldName = null;
+    }
+
+    record LocationSnapshot(String worldName, double x, double y, double z, float yaw, float pitch) {
     }
 }

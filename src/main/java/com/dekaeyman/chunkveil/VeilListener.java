@@ -34,6 +34,7 @@ final class VeilListener implements Listener {
         if (from.getBlockX() >> 4 == to.getBlockX() >> 4
                 && from.getBlockZ() >> 4 == to.getBlockZ() >> 4
                 && from.getWorld().equals(to.getWorld())) {
+            veilEngine.refreshVisibleChunks(event.getPlayer());
             return;
         }
 

@@ -33,14 +33,12 @@ final class VeilEngine {
     private final VeilMetrics metrics;
     private final Map<UUID, PlayerVeilState> states = new ConcurrentHashMap<>();
     private final Map<Material, BlockData> fakeBlockData = new ConcurrentHashMap<>();
-    private final List<Vector> viewRevealDirections;
     private BukkitTask workerTask;
 
     VeilEngine(Plugin plugin, VeilSettings settings, VeilMetrics metrics) {
         this.plugin = plugin;
         this.settings = settings;
         this.metrics = metrics;
-        this.viewRevealDirections = buildViewRevealDirections(settings);
     }
 
     void start() {
@@ -391,28 +389,46 @@ final class VeilEngine {
         }
 
         PlayerVeilState state = states.computeIfAbsent(player.getUniqueId(), ignored -> new PlayerVeilState());
-        if (!state.canRefreshViewReveal(settings.viewRevealRefreshMillis())) {
+        Location eye = player.getEyeLocation();
+        if (!state.shouldRefreshViewReveal(locationSnapshot(eye), settings)) {
             return;
         }
 
-        state.rememberVisibleChunks(collectVisibleChunks(player));
         Set<ChunkKey> forgottenChunks = state.forgetVisibleChunksOutside(player.getWorld().getName(), player.getLocation().getChunk().getX(), player.getLocation().getChunk().getZ(), effectiveScanRadius(player));
+        state.rememberVisibleChunks(collectVisibleChunks(player, eye, state.visibleChunkSnapshot()));
         Set<ChunkKey> visibleChunks = state.visibleChunkSnapshot();
         enqueueVisibilityDelta(player, state, visibleChunks, forgottenChunks);
     }
 
-    private Set<ChunkKey> collectVisibleChunks(Player player) {
+    private PlayerVeilState.LocationSnapshot locationSnapshot(Location eye) {
+        return new PlayerVeilState.LocationSnapshot(
+                eye.getWorld().getName(),
+                eye.getX(),
+                eye.getY(),
+                eye.getZ(),
+                eye.getYaw(),
+                eye.getPitch()
+        );
+    }
+
+    private Set<ChunkKey> collectVisibleChunks(Player player, Location eye, Set<ChunkKey> alreadyVisibleChunks) {
         Set<ChunkKey> visibleChunks = new HashSet<>();
-        Location eye = player.getEyeLocation();
         int maxDistanceBlocks = effectiveScanRadius(player) * 16;
-        for (Vector direction : viewRevealDirections) {
-            collectVisibleChunksOnRay(player.getWorld(), eye, direction, maxDistanceBlocks, visibleChunks);
+        for (Vector direction : buildViewRevealDirections(eye.getYaw())) {
+            collectVisibleChunksOnRay(player.getWorld(), eye, direction, maxDistanceBlocks, visibleChunks, alreadyVisibleChunks);
         }
 
         return visibleChunks;
     }
 
-    private void collectVisibleChunksOnRay(World world, Location eye, Vector direction, int maxDistanceBlocks, Set<ChunkKey> visibleChunks) {
+    private void collectVisibleChunksOnRay(
+            World world,
+            Location eye,
+            Vector direction,
+            int maxDistanceBlocks,
+            Set<ChunkKey> visibleChunks,
+            Set<ChunkKey> alreadyVisibleChunks
+    ) {
         int previousX = Integer.MIN_VALUE;
         int previousY = Integer.MIN_VALUE;
         int previousZ = Integer.MIN_VALUE;
@@ -420,6 +436,7 @@ final class VeilEngine {
         int checkedChunkZ = Integer.MIN_VALUE;
         int addedChunkX = Integer.MIN_VALUE;
         int addedChunkZ = Integer.MIN_VALUE;
+        boolean currentChunkAlreadyVisible = false;
         String worldName = world.getName();
         boolean reachedHiddenLayer = false;
         int occludingBlocks = 0;
@@ -445,19 +462,24 @@ final class VeilEngine {
                 if (!world.isChunkLoaded(chunkX, chunkZ)) {
                     break;
                 }
+                currentChunkAlreadyVisible = alreadyVisibleChunks.contains(ChunkKey.of(worldName, chunkX, chunkZ));
             }
 
             Block block = world.getBlockAt(blockX, blockY, blockZ);
             if (blockY >= settings.minY(world) && blockY < settings.hideBelowY(world)) {
                 reachedHiddenLayer = true;
                 if (chunkX != addedChunkX || chunkZ != addedChunkZ) {
-                    visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
+                    if (!currentChunkAlreadyVisible) {
+                        visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
+                    }
                     addedChunkX = chunkX;
                     addedChunkZ = chunkZ;
                 }
             } else if (reachedHiddenLayer) {
                 if (chunkX != addedChunkX || chunkZ != addedChunkZ) {
-                    visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
+                    if (!currentChunkAlreadyVisible) {
+                        visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
+                    }
                     addedChunkX = chunkX;
                     addedChunkZ = chunkZ;
                 }
@@ -494,10 +516,22 @@ final class VeilEngine {
         }
     }
 
-    private List<Vector> buildViewRevealDirections(VeilSettings settings) {
-        List<Vector> directions = new ArrayList<>(settings.viewRevealHorizontalRays() * settings.viewRevealVerticalRays());
-        for (int horizontal = 0; horizontal < settings.viewRevealHorizontalRays(); horizontal++) {
-            double yaw = Math.toRadians(360.0D * horizontal / settings.viewRevealHorizontalRays());
+    private List<Vector> buildViewRevealDirections(float playerYaw) {
+        int horizontalRays = settings.viewRevealFrontHorizontalRays()
+                + settings.viewRevealSideHorizontalRays() * 2
+                + settings.viewRevealBackHorizontalRays();
+        List<Vector> directions = new ArrayList<>(horizontalRays * settings.viewRevealVerticalRays());
+        addViewRevealDirections(directions, playerYaw, -70.0D, 70.0D, settings.viewRevealFrontHorizontalRays());
+        addViewRevealDirections(directions, playerYaw, 70.0D, 145.0D, settings.viewRevealSideHorizontalRays());
+        addViewRevealDirections(directions, playerYaw, -145.0D, -70.0D, settings.viewRevealSideHorizontalRays());
+        addViewRevealDirections(directions, playerYaw, 145.0D, 215.0D, settings.viewRevealBackHorizontalRays());
+        return List.copyOf(directions);
+    }
+
+    private void addViewRevealDirections(List<Vector> directions, float playerYaw, double minYawOffset, double maxYawOffset, int horizontalRays) {
+        for (int horizontal = 0; horizontal < horizontalRays; horizontal++) {
+            double yawOffset = horizontalOffset(horizontal, horizontalRays, minYawOffset, maxYawOffset);
+            double yaw = Math.toRadians(playerYaw + yawOffset);
             for (int vertical = 0; vertical < settings.viewRevealVerticalRays(); vertical++) {
                 double pitch = Math.toRadians(verticalPitch(vertical, settings.viewRevealVerticalRays()));
                 double horizontalLength = Math.cos(pitch);
@@ -508,7 +542,13 @@ final class VeilEngine {
                 ));
             }
         }
-        return List.copyOf(directions);
+    }
+
+    private double horizontalOffset(int index, int total, double minYawOffset, double maxYawOffset) {
+        if (total <= 1) {
+            return (minYawOffset + maxYawOffset) / 2.0D;
+        }
+        return minYawOffset + (maxYawOffset - minYawOffset) * index / (total - 1);
     }
 
     private float verticalPitch(int index, int total) {
