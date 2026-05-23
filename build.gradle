@@ -19,10 +19,9 @@ dependencies {
     compileOnly("net.dmulloy2:ProtocolLib:5.4.0")
 }
 
-tasks {
-    runServer {
-        minecraftVersion("1.21.11")
-    }
+tasks.named("runServer") {
+    minecraftVersion("1.21.11")
+    pluginJars(tasks.named("jar").flatMap { it.archiveFile })
 }
 
 def targetJavaVersion = 21
