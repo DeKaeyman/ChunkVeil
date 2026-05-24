@@ -9,7 +9,7 @@ softdepend:
 commands:
   chunkveil:
     description: Admin tools for ChunkVeil.
-    usage: /chunkveil <status|reload|refresh|disable|enable|debug|version>
+    usage: /chunkveil <status|compat|reload|refresh|disable|enable|debug|version>
     aliases:
       - cv
 permissions:
@@ -18,12 +18,16 @@ permissions:
     default: op
     children:
       chunkveil.status: true
+      chunkveil.compat: true
       chunkveil.reload: true
       chunkveil.refresh: true
       chunkveil.toggle: true
       chunkveil.debug: true
   chunkveil.status:
     description: Allows checking ChunkVeil status.
+    default: op
+  chunkveil.compat:
+    description: Allows checking ChunkVeil compatibility diagnostics.
     default: op
   chunkveil.reload:
     description: Allows reloading ChunkVeil.

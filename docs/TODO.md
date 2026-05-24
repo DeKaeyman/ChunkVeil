@@ -24,16 +24,16 @@ Statuses:
 
 ## Next
 
-- [ ] Add `/chunkveil compat`.
-- [ ] Show server Minecraft version in compatibility output.
-- [ ] Show Paper API/version info when available.
-- [ ] Show Java version.
-- [ ] Show ProtocolLib version.
-- [ ] Show raw chunk packet rewrite status.
-- [ ] Show last compatibility/startup failure reason.
-- [ ] Show enabled worlds.
-- [ ] Show unsupported setup warnings.
-- [ ] Improve `/chunkveil status` grouping.
+- [x] Add `/chunkveil compat`.
+- [x] Show server Minecraft version in compatibility output.
+- [x] Show Paper API/version info when available.
+- [x] Show Java version.
+- [x] Show ProtocolLib version.
+- [x] Show raw chunk packet rewrite status.
+- [x] Show last compatibility/startup failure reason.
+- [x] Show enabled worlds.
+- [x] Show unsupported setup warnings.
+- [x] Improve `/chunkveil status` grouping.
 - [ ] Add config validation at startup and reload.
 - [ ] Warn when configured worlds do not exist.
 - [ ] Warn when `hide-below-y <= min-y`.
