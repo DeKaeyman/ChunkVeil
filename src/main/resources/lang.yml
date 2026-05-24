@@ -21,6 +21,7 @@ commands:
     compat: "/{label} compat"
     inspect: "/{label} inspect <player>"
     report: "/{label} report"
+    predict: "/{label} predict <players> <ramGb> <cpuTier> [viewDistance]"
     reload: "/{label} reload"
     refresh: "/{label} refresh"
     disable: "/{label} disable"
@@ -37,6 +38,7 @@ commands:
     section-players: "&8- &3Players & Queues"
     section-protection: "&8- &3Protection Counters"
     section-updates: "&8- &3Update & Entity Counters"
+    section-timings: "&8- &3Timing Metrics"
     runtime: "{badge} &7Runtime: {state}"
     disabled-reason: "{badge} &7Disabled reason: &c{reason}"
     debug: "{badge} &7Debug logging: {state}"
@@ -54,6 +56,7 @@ commands:
     updates-multi: "{badge} &7Multi-block changes rewritten: &f{multi}"
     updates-block-entities: "{badge} &7Block entity updates cancelled: &f{block_entities}"
     entities: "{badge} &7Entity spawns cancelled: &f{spawns}&7, follow-up packets cancelled: &f{packets}"
+    timing: "{badge} &7{metric}: avg=&f{avg}ms&7, max=&f{max}ms&7, samples=&f{samples}"
 
   compat:
     title: "&3&m                                "
@@ -95,6 +98,19 @@ commands:
   report:
     created: "Diagnostic report created: &f{file}"
     failed: "&cCould not create diagnostic report: {reason}"
+
+  predict:
+    title: "&3&m                                "
+    heading: "&bChunkVeil Performance Prediction"
+    usage: "&cUsage: &f/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]&7. cpuTier is single-core strength: &flow&7, &fmid&7, &fhigh&7, or &ftop&7. Prediction needs live timing samples first."
+    not-ready: "{badge} &cNot enough live timing data yet. Move players around, load chunks, then try again."
+    samples: "{badge} &7Samples: reveal=&f{reveal}&7/&f{required_reveal}&7, chunkMask=&f{chunk_mask}&7/&f{required_chunk_mask}&7, entity=&f{entity}&7/&f{required_entity}&7, queue=&f{queue}&7/&f{required_queue}"
+    input: "{badge} &7Input: &f{players} players&7, &f{ram}GB RAM&7, CPU tier &f{cpu_tier}&7, view distance &f{view_distance}"
+    estimate: "{badge} &7Estimated ChunkVeil CPU load: &f{load}%"
+    tick-cost: "{badge} &7Estimated main-tick budget use: &f{tick}ms / 50ms"
+    memory: "{badge} &7RAM headroom: &f{memory}"
+    confidence: "{badge} &7Confidence: &f{confidence}"
+    recommendation: "{badge} &7Recommendation: &f{recommendation}"
 
   reload: "Reloaded config and language, then refreshed online players."
   refresh: "Refreshed &f{players}&7 online players."

@@ -501,8 +501,11 @@ final class ProtocolChunkListener {
     ) {
         try {
             World world = player.getWorld();
-            return rewriterFor(settings.defaultFakeBlock(world))
+            long startNanos = System.nanoTime();
+            int rewrittenSections = rewriterFor(settings.defaultFakeBlock(world))
                     .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
+            metrics.recordChunkMaskNanos(System.nanoTime() - startNanos);
+            return rewrittenSections;
         } catch (Throwable throwable) {
             if (packetBlockRewriteBroken.compareAndSet(false, true)) {
                 String reason = packetCompatibilityFailure(

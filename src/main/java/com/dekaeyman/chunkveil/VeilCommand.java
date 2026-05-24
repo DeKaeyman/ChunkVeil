@@ -18,8 +18,12 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "predict", "reload", "refresh", "disable", "enable", "debug", "version");
     private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+    private static final long REQUIRED_REVEAL_PREDICT_SAMPLES = 30L;
+    private static final long REQUIRED_CHUNK_MASK_PREDICT_SAMPLES = 5L;
+    private static final long REQUIRED_ENTITY_PREDICT_SAMPLES = 10L;
+    private static final long REQUIRED_QUEUE_PREDICT_SAMPLES = 100L;
 
     private final ChunkVeilPlugin plugin;
 
@@ -40,6 +44,7 @@ final class VeilCommand implements TabExecutor {
             case "compat" -> sendCompat(sender);
             case "inspect" -> inspect(sender, args);
             case "report" -> report(sender);
+            case "predict" -> predict(sender, args);
             case "reload" -> reload(sender);
             case "refresh" -> refresh(sender);
             case "disable", "off" -> disable(sender);
@@ -195,6 +200,22 @@ final class VeilCommand implements TabExecutor {
                 "badge", infoBadge(),
                 "spawns", metrics.entitySpawnsCancelled(),
                 "packets", metrics.entityPacketsCancelled()
+        )));
+
+        sender.sendMessage(lang().message("commands.status.section-timings"));
+        sendTiming(sender, "Reveal scan", metrics.revealScanAverageMillis(), metrics.revealScanMaxMillis(), metrics.revealScanSamples());
+        sendTiming(sender, "Chunk masking", metrics.chunkMaskAverageMillis(), metrics.chunkMaskMaxMillis(), metrics.chunkMaskSamples());
+        sendTiming(sender, "Entity scan", metrics.entityScanAverageMillis(), metrics.entityScanMaxMillis(), metrics.entityScanSamples());
+        sendTiming(sender, "Queue processing", metrics.queueProcessingAverageMillis(), metrics.queueProcessingMaxMillis(), metrics.queueProcessingSamples());
+    }
+
+    private void sendTiming(CommandSender sender, String label, double averageMillis, double maxMillis, long samples) {
+        sender.sendMessage(lang().message("commands.status.timing", Map.of(
+                "badge", samples == 0L ? warnBadge() : infoBadge(),
+                "metric", label,
+                "avg", decimal(averageMillis),
+                "max", decimal(maxMillis),
+                "samples", samples
         )));
     }
 
@@ -368,6 +389,166 @@ final class VeilCommand implements TabExecutor {
         }
     }
 
+    private void predict(CommandSender sender, String[] args) {
+        if (!canUse(sender, "chunkveil.predict")) {
+            deny(sender);
+            return;
+        }
+        if (args.length < 4) {
+            sender.sendMessage(lang().message("commands.predict.usage"));
+            return;
+        }
+
+        Integer players = positiveInteger(args[1]);
+        Double ramGb = positiveDouble(args[2]);
+        CpuTier cpuTier = cpuTier(args[3]);
+        Integer viewDistance = args.length >= 5 ? positiveInteger(args[4]) : plugin.getServer().getViewDistance();
+        if (players == null || ramGb == null || cpuTier == null || viewDistance == null) {
+            sender.sendMessage(lang().message("commands.predict.usage"));
+            return;
+        }
+
+        VeilMetrics metrics = plugin.metrics();
+        if (!hasEnoughPredictionSamples(metrics)) {
+            sender.sendMessage(lang().message("commands.predict.title"));
+            sender.sendMessage(lang().message("commands.predict.heading"));
+            sender.sendMessage(lang().message("commands.predict.not-ready", Map.of("badge", failBadge())));
+            sender.sendMessage(lang().message("commands.predict.samples", Map.of(
+                    "badge", infoBadge(),
+                    "reveal", metrics.revealScanSamples(),
+                    "required_reveal", REQUIRED_REVEAL_PREDICT_SAMPLES,
+                    "chunk_mask", metrics.chunkMaskSamples(),
+                    "required_chunk_mask", REQUIRED_CHUNK_MASK_PREDICT_SAMPLES,
+                    "entity", metrics.entityScanSamples(),
+                    "required_entity", REQUIRED_ENTITY_PREDICT_SAMPLES,
+                    "queue", metrics.queueProcessingSamples(),
+                    "required_queue", REQUIRED_QUEUE_PREDICT_SAMPLES
+            )));
+            return;
+        }
+
+        Prediction prediction = predictPerformance(players, ramGb, cpuTier, viewDistance);
+        sender.sendMessage(lang().message("commands.predict.title"));
+        sender.sendMessage(lang().message("commands.predict.heading"));
+        sender.sendMessage(lang().message("commands.predict.input", Map.of(
+                "badge", infoBadge(),
+                "players", players,
+                "ram", decimal(ramGb),
+                "cpu_tier", cpuTier.label(),
+                "view_distance", viewDistance
+        )));
+        sender.sendMessage(lang().message("commands.predict.estimate", Map.of(
+                "badge", prediction.loadPercent() >= 70.0D ? warnBadge() : okBadge(),
+                "load", decimal(prediction.loadPercent())
+        )));
+        sender.sendMessage(lang().message("commands.predict.tick-cost", Map.of(
+                "badge", prediction.tickMillis() >= 10.0D ? warnBadge() : okBadge(),
+                "tick", decimal(prediction.tickMillis())
+        )));
+        sender.sendMessage(lang().message("commands.predict.memory", Map.of(
+                "badge", prediction.memoryWarning() ? warnBadge() : okBadge(),
+                "memory", prediction.memorySummary()
+        )));
+        sender.sendMessage(lang().message("commands.predict.confidence", Map.of(
+                "badge", okBadge(),
+                "confidence", prediction.confidence()
+        )));
+        sender.sendMessage(lang().message("commands.predict.recommendation", Map.of(
+                "badge", prediction.recommendationBadge(),
+                "recommendation", prediction.recommendation()
+        )));
+    }
+
+    private Prediction predictPerformance(int players, double ramGb, CpuTier cpuTier, int viewDistance) {
+        VeilSettings settings = plugin.settings();
+        VeilMetrics metrics = plugin.metrics();
+        double revealMillis = metrics.revealScanAverageMillis();
+        double entityMillis = metrics.entityScanAverageMillis();
+        double queueMillis = metrics.queueProcessingAverageMillis();
+        double maskMillis = metrics.chunkMaskAverageMillis();
+
+        double revealActivityFactor = 0.18D;
+        double entityActivityFactor = 0.25D;
+        double chunkMaskBurstsPerPlayerPerSecond = 0.12D;
+        double revealScansPerSecond = players * (1000.0D / settings.viewRevealRefreshMillis()) * revealActivityFactor;
+        double entityScansPerSecond = players * (1000.0D / settings.entityScanIntervalMillis()) * entityActivityFactor;
+        double estimatedMillisPerSecond = revealScansPerSecond * revealMillis
+                + entityScansPerSecond * entityMillis
+                + 20.0D * queueMillis
+                + players * chunkMaskBurstsPerPlayerPerSecond * maskMillis;
+        double tickMillis = estimatedMillisPerSecond / 20.0D * cpuTier.mainThreadMultiplier();
+        double loadPercent = tickMillis / 50.0D * 100.0D;
+
+        double estimatedPluginRamGb = 0.08D + players * 0.006D + viewDistance * 0.015D;
+        boolean memoryWarning = ramGb < 2.0D || estimatedPluginRamGb > ramGb * 0.15D;
+        String memorySummary = decimal(estimatedPluginRamGb) + "GB estimated ChunkVeil overhead on " + decimal(ramGb) + "GB server RAM";
+        String confidence = "medium/high, based only on live timing samples from this server session";
+
+        String recommendation;
+        String recommendationBadge;
+        if (loadPercent >= 85.0D || tickMillis >= 15.0D || memoryWarning) {
+            recommendation = "High risk. Lower ray counts, increase refresh intervals, reduce view distance, or use stronger single-core CPU/RAM.";
+            recommendationBadge = failBadge();
+        } else if (loadPercent >= 55.0D || tickMillis >= 8.0D) {
+            recommendation = "Moderate risk. Watch /chunkveil status timings during peak player count. Extra CPU threads do not scale the main tick linearly.";
+            recommendationBadge = warnBadge();
+        } else {
+            recommendation = "Looks reasonable for this configuration. Re-check after collecting live timings with real players.";
+            recommendationBadge = okBadge();
+        }
+
+        return new Prediction(loadPercent, tickMillis, memoryWarning, memorySummary, confidence, recommendation, recommendationBadge);
+    }
+
+    private boolean hasEnoughPredictionSamples(VeilMetrics metrics) {
+        return metrics.revealScanSamples() >= REQUIRED_REVEAL_PREDICT_SAMPLES
+                && metrics.chunkMaskSamples() >= REQUIRED_CHUNK_MASK_PREDICT_SAMPLES
+                && metrics.entityScanSamples() >= REQUIRED_ENTITY_PREDICT_SAMPLES
+                && metrics.queueProcessingSamples() >= REQUIRED_QUEUE_PREDICT_SAMPLES;
+    }
+
+    private Integer positiveInteger(String value) {
+        try {
+            int parsed = Integer.parseInt(value);
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private Double positiveDouble(String value) {
+        try {
+            double parsed = Double.parseDouble(value);
+            return parsed > 0.0D ? parsed : null;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private CpuTier cpuTier(String value) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "low" -> new CpuTier("low", 1.35D);
+            case "mid", "medium" -> new CpuTier("mid", 1.0D);
+            case "high" -> new CpuTier("high", 0.78D);
+            case "top", "veryhigh", "very-high" -> new CpuTier("top", 0.62D);
+            default -> null;
+        };
+    }
+
+    private record CpuTier(String label, double mainThreadMultiplier) {
+    }
+
+    private record Prediction(
+            double loadPercent,
+            double tickMillis,
+            boolean memoryWarning,
+            String memorySummary,
+            String confidence,
+            String recommendation,
+            String recommendationBadge
+    ) {
+    }
+
     private List<String> compatibilityWarnings(Plugin protocolLib, VeilSettings settings) {
         List<String> warnings = new ArrayList<>();
         if (protocolLib == null || !protocolLib.isEnabled()) {
@@ -457,6 +638,11 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "move threshold blocks", settings.viewRevealMoveThresholdBlocks());
         appendLine(report, "yaw threshold degrees", settings.viewRevealYawThresholdDegrees());
         appendLine(report, "pitch threshold degrees", settings.viewRevealPitchThresholdDegrees());
+        appendLine(report, "priority chunk updates per player per tick", settings.maxPriorityChunkUpdatesPerPlayerPerTick());
+        appendLine(report, "regular chunk updates per player per tick", settings.maxRegularChunkUpdatesPerPlayerPerTick());
+        appendLine(report, "entity scan interval millis", settings.entityScanIntervalMillis());
+        appendLine(report, "entity scan max entities per player", settings.entityScanMaxEntitiesPerPlayer());
+        appendLine(report, "view reveal yaw cache bucket degrees", settings.viewRevealYawCacheBucketDegrees());
 
         appendSection(report, "Validation Warnings");
         if (settings.validationWarnings().isEmpty()) {
@@ -478,6 +664,18 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "block entity updates cancelled", metrics.blockEntityUpdatesCancelled());
         appendLine(report, "entity spawns cancelled", metrics.entitySpawnsCancelled());
         appendLine(report, "entity packets cancelled", metrics.entityPacketsCancelled());
+        appendLine(report, "reveal scan avg ms", decimal(metrics.revealScanAverageMillis()));
+        appendLine(report, "reveal scan max ms", decimal(metrics.revealScanMaxMillis()));
+        appendLine(report, "reveal scan samples", metrics.revealScanSamples());
+        appendLine(report, "chunk mask avg ms", decimal(metrics.chunkMaskAverageMillis()));
+        appendLine(report, "chunk mask max ms", decimal(metrics.chunkMaskMaxMillis()));
+        appendLine(report, "chunk mask samples", metrics.chunkMaskSamples());
+        appendLine(report, "entity scan avg ms", decimal(metrics.entityScanAverageMillis()));
+        appendLine(report, "entity scan max ms", decimal(metrics.entityScanMaxMillis()));
+        appendLine(report, "entity scan samples", metrics.entityScanSamples());
+        appendLine(report, "queue processing avg ms", decimal(metrics.queueProcessingAverageMillis()));
+        appendLine(report, "queue processing max ms", decimal(metrics.queueProcessingMaxMillis()));
+        appendLine(report, "queue processing samples", metrics.queueProcessingSamples());
 
         appendSection(report, "Tracked Runtime State");
         VeilEngine veilEngine = plugin.veilEngine();
@@ -528,6 +726,10 @@ final class VeilCommand implements TabExecutor {
         }
         long hours = minutes / 60L;
         return hours + "h " + (minutes % 60L) + "m ago";
+    }
+
+    private String decimal(double value) {
+        return String.format(Locale.ROOT, "%.3f", value);
     }
 
     private String worlds(Iterable<String> worlds) {
@@ -650,6 +852,7 @@ final class VeilCommand implements TabExecutor {
             case "compat" -> "chunkveil.compat";
             case "inspect" -> "chunkveil.inspect";
             case "report" -> "chunkveil.report";
+            case "predict" -> "chunkveil.predict";
             case "debug" -> "chunkveil.debug";
             case "refresh" -> "chunkveil.refresh";
             case "disable", "enable" -> "chunkveil.toggle";

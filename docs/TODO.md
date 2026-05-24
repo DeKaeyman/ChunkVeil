@@ -68,17 +68,19 @@ Statuses:
 
 ## Performance
 
-- [ ] Move chunk update work budgets into config.
-- [ ] Make priority chunk updates per player per tick configurable.
-- [ ] Make regular chunk updates per player per tick configurable.
-- [ ] Add entity scan interval/budget config.
-- [ ] Add scan timing metrics.
-- [ ] Track reveal scan time.
-- [ ] Track chunk masking time.
-- [ ] Track entity scan time.
-- [ ] Track queue processing time.
-- [ ] Show average/max timings in debug/status output.
-- [ ] Cache reveal ray directions per yaw bucket and scan profile.
+- [x] Move chunk update work budgets into config.
+- [x] Make priority chunk updates per player per tick configurable.
+- [x] Make regular chunk updates per player per tick configurable.
+- [x] Add entity scan interval/budget config.
+- [x] Add scan timing metrics.
+- [x] Track reveal scan time.
+- [x] Track chunk masking time.
+- [x] Track entity scan time.
+- [x] Track queue processing time.
+- [x] Show average/max timings in debug/status output.
+- [x] Cache reveal ray directions per yaw bucket and scan profile.
+- [x] Add `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]`.
+- [x] Use live timing samples in performance predictions when available.
 - [ ] Add optional adaptive scan quality.
 - [ ] Reduce ray counts automatically below a configured TPS threshold.
 

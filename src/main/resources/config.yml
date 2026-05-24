@@ -17,6 +17,20 @@ view-reveal-move-threshold-blocks: 3.0
 view-reveal-yaw-threshold-degrees: 12.0
 view-reveal-pitch-threshold-degrees: 8.0
 
+# Per-tick work budgets and timing controls.
+# These limits protect the main server tick. Higher values reveal/mask faster,
+# but can spend more of the 50ms tick budget when many players are active.
+performance:
+  # Hidden chunks from fresh chunk packets are priority work.
+  max-priority-chunk-updates-per-player-per-tick: 24
+  # Regular visibility changes are intentionally slower and smoother.
+  max-regular-chunk-updates-per-player-per-tick: 1
+  # Entity scans are throttled separately from chunk reveal scans.
+  entity-scan-interval-millis: 500
+  entity-scan-max-entities-per-player: 256
+  # Yaw buckets cache ray directions. Smaller = slightly more accurate, more cache entries.
+  view-reveal-yaw-cache-bucket-degrees: 5
+
 # World settings. Each world is independent; no block/entity settings are global.
 worlds:
   world:

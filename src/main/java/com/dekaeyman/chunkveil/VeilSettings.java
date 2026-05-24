@@ -24,6 +24,11 @@ record VeilSettings(
         double viewRevealMoveThresholdBlocks,
         float viewRevealYawThresholdDegrees,
         float viewRevealPitchThresholdDegrees,
+        int maxPriorityChunkUpdatesPerPlayerPerTick,
+        int maxRegularChunkUpdatesPerPlayerPerTick,
+        int entityScanIntervalMillis,
+        int entityScanMaxEntitiesPerPlayer,
+        int viewRevealYawCacheBucketDegrees,
         List<String> validationWarnings
 ) {
     static VeilSettings load(Plugin plugin) {
@@ -69,6 +74,20 @@ record VeilSettings(
         double viewRevealMoveThresholdBlocks = Math.max(0.0D, config.getDouble("view-reveal-move-threshold-blocks", 3.0D));
         float viewRevealYawThresholdDegrees = Math.max(0.0F, (float) config.getDouble("view-reveal-yaw-threshold-degrees", 12.0D));
         float viewRevealPitchThresholdDegrees = Math.max(0.0F, (float) config.getDouble("view-reveal-pitch-threshold-degrees", 8.0D));
+        ConfigurationSection performance = config.getConfigurationSection("performance");
+        int maxPriorityChunkUpdatesPerPlayerPerTick = Math.max(1, intValue(
+                performance,
+                "max-priority-chunk-updates-per-player-per-tick",
+                24
+        ));
+        int maxRegularChunkUpdatesPerPlayerPerTick = Math.max(1, intValue(
+                performance,
+                "max-regular-chunk-updates-per-player-per-tick",
+                1
+        ));
+        int entityScanIntervalMillis = Math.max(100, intValue(performance, "entity-scan-interval-millis", 500));
+        int entityScanMaxEntitiesPerPlayer = Math.max(16, intValue(performance, "entity-scan-max-entities-per-player", 256));
+        int viewRevealYawCacheBucketDegrees = Math.max(1, intValue(performance, "view-reveal-yaw-cache-bucket-degrees", 5));
         validateGlobalSettings(
                 viewRevealFrontHorizontalRays,
                 viewRevealSideHorizontalRays,
@@ -100,6 +119,11 @@ record VeilSettings(
                 viewRevealMoveThresholdBlocks,
                 viewRevealYawThresholdDegrees,
                 viewRevealPitchThresholdDegrees,
+                maxPriorityChunkUpdatesPerPlayerPerTick,
+                maxRegularChunkUpdatesPerPlayerPerTick,
+                entityScanIntervalMillis,
+                entityScanMaxEntitiesPerPlayer,
+                viewRevealYawCacheBucketDegrees,
                 List.copyOf(validationWarnings)
         );
     }
@@ -175,6 +199,10 @@ record VeilSettings(
             return fallback;
         }
         return material;
+    }
+
+    private static int intValue(ConfigurationSection section, String path, int fallback) {
+        return section == null ? fallback : section.getInt(path, fallback);
     }
 
     private static void validateGlobalSettings(

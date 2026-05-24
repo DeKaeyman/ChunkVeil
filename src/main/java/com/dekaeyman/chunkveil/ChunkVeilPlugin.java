@@ -217,6 +217,14 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " queued=" + veilEngine.queuedChunkCount()
                 + " trackedPlayers=" + veilEngine.trackedPlayerCount()
                 + " entitySpawnsCancelled=" + metrics.entitySpawnsCancelled()
-                + " entityPacketsCancelled=" + metrics.entityPacketsCancelled());
+                + " entityPacketsCancelled=" + metrics.entityPacketsCancelled()
+                + " revealScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanAverageMillis())
+                + " revealScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanMaxMillis())
+                + " chunkMaskAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkMaskAverageMillis())
+                + " chunkMaskMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkMaskMaxMillis())
+                + " entityScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanAverageMillis())
+                + " entityScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanMaxMillis())
+                + " queueAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingAverageMillis())
+                + " queueMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingMaxMillis()));
     }
 }

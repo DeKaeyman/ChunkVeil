@@ -18,6 +18,7 @@ final class PlayerVeilState {
     private final Map<Integer, UUID> hiddenEntityUuidsById = new ConcurrentHashMap<>();
     private final Set<ChunkKey> visibleChunks = ConcurrentHashMap.newKeySet();
     private volatile long lastViewRevealRefreshMillis;
+    private volatile long lastEntityScanMillis;
     private String lastViewRevealWorldName;
     private double lastViewRevealX;
     private double lastViewRevealY;
@@ -168,6 +169,15 @@ final class PlayerVeilState {
         return true;
     }
 
+    boolean shouldRefreshEntityScan(VeilSettings settings) {
+        long now = System.currentTimeMillis();
+        if (now - lastEntityScanMillis < settings.entityScanIntervalMillis()) {
+            return false;
+        }
+        lastEntityScanMillis = now;
+        return true;
+    }
+
     private double distanceSquaredToLastScan(LocationSnapshot snapshot) {
         double dx = snapshot.x() - lastViewRevealX;
         double dy = snapshot.y() - lastViewRevealY;
@@ -203,6 +213,7 @@ final class PlayerVeilState {
         clearHiddenEntities();
         visibleChunks.clear();
         lastViewRevealRefreshMillis = 0L;
+        lastEntityScanMillis = 0L;
         lastViewRevealWorldName = null;
     }
 

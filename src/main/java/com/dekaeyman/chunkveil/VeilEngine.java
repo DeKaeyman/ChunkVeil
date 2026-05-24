@@ -25,14 +25,12 @@ import org.bukkit.util.NumberConversions;
 import org.bukkit.util.Vector;
 
 final class VeilEngine {
-    private static final int PACKET_CHUNKS_PER_TICK = 24;
-    private static final int CHUNK_UPDATES_PER_PLAYER_PER_TICK = 1;
-
     private final Plugin plugin;
     private final VeilSettings settings;
     private final VeilMetrics metrics;
     private final Map<UUID, PlayerVeilState> states = new ConcurrentHashMap<>();
     private final Map<Material, BlockData> fakeBlockData = new ConcurrentHashMap<>();
+    private final Map<Integer, List<Vector>> viewRevealDirectionCache = new ConcurrentHashMap<>();
     private BukkitTask workerTask;
 
     VeilEngine(Plugin plugin, VeilSettings settings, VeilMetrics metrics) {
@@ -239,61 +237,66 @@ final class VeilEngine {
     }
 
     private void processQueuedChunks() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            int processedRegularChunks = 0;
-            int processedPriorityChunks = 0;
+        long startNanos = System.nanoTime();
+        try {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                int processedRegularChunks = 0;
+                int processedPriorityChunks = 0;
 
-            PlayerVeilState state = states.get(player.getUniqueId());
-            if (state == null || !settings.isEnabledWorld(player.getWorld())) {
-                continue;
-            }
-            if (isBypassed(player)) {
-                removePlayer(player);
-                continue;
-            }
-
-            while (processedRegularChunks < CHUNK_UPDATES_PER_PLAYER_PER_TICK
-                    || processedPriorityChunks < PACKET_CHUNKS_PER_TICK) {
-                VeilChunkUpdate update = state.poll();
-                if (update == null) {
-                    break;
+                PlayerVeilState state = states.get(player.getUniqueId());
+                if (state == null || !settings.isEnabledWorld(player.getWorld())) {
+                    continue;
+                }
+                if (isBypassed(player)) {
+                    removePlayer(player);
+                    continue;
                 }
 
-                if (update.priority()) {
-                    if (processedPriorityChunks >= PACKET_CHUNKS_PER_TICK) {
-                        state.enqueuePriority(update.chunkKey(), update.mode());
+                while (processedRegularChunks < settings.maxRegularChunkUpdatesPerPlayerPerTick()
+                        || processedPriorityChunks < settings.maxPriorityChunkUpdatesPerPlayerPerTick()) {
+                    VeilChunkUpdate update = state.poll();
+                    if (update == null) {
                         break;
                     }
-                } else if (processedRegularChunks >= CHUNK_UPDATES_PER_PLAYER_PER_TICK) {
-                    state.enqueue(update.chunkKey(), update.mode());
-                    break;
-                }
 
-                ChunkKey chunkKey = update.chunkKey();
-                if (!chunkKey.worldName().equals(player.getWorld().getName())) {
-                    continue;
-                }
+                    if (update.priority()) {
+                        if (processedPriorityChunks >= settings.maxPriorityChunkUpdatesPerPlayerPerTick()) {
+                            state.enqueuePriority(update.chunkKey(), update.mode());
+                            break;
+                        }
+                    } else if (processedRegularChunks >= settings.maxRegularChunkUpdatesPerPlayerPerTick()) {
+                        state.enqueue(update.chunkKey(), update.mode());
+                        break;
+                    }
 
-                World world = Bukkit.getWorld(chunkKey.worldName());
-                if (world == null || !world.isChunkLoaded(chunkKey.x(), chunkKey.z())) {
-                    continue;
-                }
+                    ChunkKey chunkKey = update.chunkKey();
+                    if (!chunkKey.worldName().equals(player.getWorld().getName())) {
+                        continue;
+                    }
 
-                Chunk chunk = world.getChunkAt(chunkKey.x(), chunkKey.z());
-                if (!player.isChunkSent(chunk)) {
-                    continue;
-                }
+                    World world = Bukkit.getWorld(chunkKey.worldName());
+                    if (world == null || !world.isChunkLoaded(chunkKey.x(), chunkKey.z())) {
+                        continue;
+                    }
 
-                if (sendChunkMode(player, chunk, update.mode())) {
-                    state.markApplied(chunkKey, update.mode());
-                    metrics.countChunkUpdatePacketSent();
-                }
-                if (update.priority()) {
-                    processedPriorityChunks++;
-                } else {
-                    processedRegularChunks++;
+                    Chunk chunk = world.getChunkAt(chunkKey.x(), chunkKey.z());
+                    if (!player.isChunkSent(chunk)) {
+                        continue;
+                    }
+
+                    if (sendChunkMode(player, chunk, update.mode())) {
+                        state.markApplied(chunkKey, update.mode());
+                        metrics.countChunkUpdatePacketSent();
+                    }
+                    if (update.priority()) {
+                        processedPriorityChunks++;
+                    } else {
+                        processedRegularChunks++;
+                    }
                 }
             }
+        } finally {
+            metrics.recordQueueProcessingNanos(System.nanoTime() - startNanos);
         }
     }
 
@@ -380,28 +383,40 @@ final class VeilEngine {
         }
 
         PlayerVeilState state = states.computeIfAbsent(viewer.getUniqueId(), ignored -> new PlayerVeilState());
+        if (!state.shouldRefreshEntityScan(settings)) {
+            return;
+        }
+        long startNanos = System.nanoTime();
+        int inspectedEntities = 0;
         int scanBlocks = (effectiveScanRadius(viewer) + 2) * 16;
-        for (Entity entity : viewer.getWorld().getNearbyEntities(viewer.getLocation(), scanBlocks, scanBlocks, scanBlocks)) {
-            if (shouldHideEntity(viewer, entity)) {
-                markEntityHidden(viewer, entity);
-            } else {
-                if (state.isEntityHidden(entity.getEntityId())) {
+        try {
+            for (Entity entity : viewer.getWorld().getNearbyEntities(viewer.getLocation(), scanBlocks, scanBlocks, scanBlocks)) {
+                if (inspectedEntities++ >= settings.entityScanMaxEntitiesPerPlayer()) {
+                    break;
+                }
+                if (shouldHideEntity(viewer, entity)) {
+                    markEntityHidden(viewer, entity);
+                } else {
+                    if (state.isEntityHidden(entity.getEntityId())) {
+                        state.forgetEntity(entity.getEntityId());
+                        viewer.showEntity(plugin, entity);
+                    }
+                }
+            }
+
+            Set<UUID> hiddenUuids = state.hiddenEntityUuids();
+            for (UUID uuid : hiddenUuids.toArray(UUID[]::new)) {
+                Entity entity = Bukkit.getEntity(uuid);
+                if (entity == null) {
+                    continue;
+                }
+                if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
                     state.forgetEntity(entity.getEntityId());
                     viewer.showEntity(plugin, entity);
                 }
             }
-        }
-
-        Set<UUID> hiddenUuids = state.hiddenEntityUuids();
-        for (UUID uuid : hiddenUuids.toArray(UUID[]::new)) {
-            Entity entity = Bukkit.getEntity(uuid);
-            if (entity == null) {
-                continue;
-            }
-            if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
-                state.forgetEntity(entity.getEntityId());
-                viewer.showEntity(plugin, entity);
-            }
+        } finally {
+            metrics.recordEntityScanNanos(System.nanoTime() - startNanos);
         }
     }
 
@@ -449,10 +464,15 @@ final class VeilEngine {
             return;
         }
 
-        Set<ChunkKey> forgottenChunks = state.forgetVisibleChunksOutside(player.getWorld().getName(), player.getLocation().getChunk().getX(), player.getLocation().getChunk().getZ(), effectiveScanRadius(player));
-        state.rememberVisibleChunks(collectVisibleChunks(player, eye, state.visibleChunkSnapshot()));
-        Set<ChunkKey> visibleChunks = state.visibleChunkSnapshot();
-        enqueueVisibilityDelta(player, state, visibleChunks, forgottenChunks);
+        long startNanos = System.nanoTime();
+        try {
+            Set<ChunkKey> forgottenChunks = state.forgetVisibleChunksOutside(player.getWorld().getName(), player.getLocation().getChunk().getX(), player.getLocation().getChunk().getZ(), effectiveScanRadius(player));
+            state.rememberVisibleChunks(collectVisibleChunks(player, eye, state.visibleChunkSnapshot()));
+            Set<ChunkKey> visibleChunks = state.visibleChunkSnapshot();
+            enqueueVisibilityDelta(player, state, visibleChunks, forgottenChunks);
+        } finally {
+            metrics.recordRevealScanNanos(System.nanoTime() - startNanos);
+        }
     }
 
     private PlayerVeilState.LocationSnapshot locationSnapshot(Location eye) {
@@ -572,15 +592,28 @@ final class VeilEngine {
     }
 
     private List<Vector> buildViewRevealDirections(float playerYaw) {
+        int yawBucket = yawBucket(playerYaw);
+        return viewRevealDirectionCache.computeIfAbsent(yawBucket, this::buildViewRevealDirectionsForBucket);
+    }
+
+    private List<Vector> buildViewRevealDirectionsForBucket(int yawBucket) {
         int horizontalRays = settings.viewRevealFrontHorizontalRays()
                 + settings.viewRevealSideHorizontalRays() * 2
                 + settings.viewRevealBackHorizontalRays();
         List<Vector> directions = new ArrayList<>(horizontalRays * settings.viewRevealVerticalRays());
-        addViewRevealDirections(directions, playerYaw, -70.0D, 70.0D, settings.viewRevealFrontHorizontalRays());
-        addViewRevealDirections(directions, playerYaw, 70.0D, 145.0D, settings.viewRevealSideHorizontalRays());
-        addViewRevealDirections(directions, playerYaw, -145.0D, -70.0D, settings.viewRevealSideHorizontalRays());
-        addViewRevealDirections(directions, playerYaw, 145.0D, 215.0D, settings.viewRevealBackHorizontalRays());
+        float bucketYaw = yawBucket * settings.viewRevealYawCacheBucketDegrees();
+        addViewRevealDirections(directions, bucketYaw, -70.0D, 70.0D, settings.viewRevealFrontHorizontalRays());
+        addViewRevealDirections(directions, bucketYaw, 70.0D, 145.0D, settings.viewRevealSideHorizontalRays());
+        addViewRevealDirections(directions, bucketYaw, -145.0D, -70.0D, settings.viewRevealSideHorizontalRays());
+        addViewRevealDirections(directions, bucketYaw, 145.0D, 215.0D, settings.viewRevealBackHorizontalRays());
         return List.copyOf(directions);
+    }
+
+    private int yawBucket(float playerYaw) {
+        int bucketDegrees = settings.viewRevealYawCacheBucketDegrees();
+        int normalizedYaw = Math.floorMod(Math.round(playerYaw), 360);
+        int bucketCount = Math.max(1, Math.floorDiv(360 + bucketDegrees - 1, bucketDegrees));
+        return Math.floorMod(Math.floorDiv(normalizedYaw + bucketDegrees / 2, bucketDegrees), bucketCount);
     }
 
     private void addViewRevealDirections(List<Vector> directions, float playerYaw, double minYawOffset, double maxYawOffset, int horizontalRays) {
@@ -623,6 +656,7 @@ final class VeilEngine {
             return refreshed;
         }
 
+        long startNanos = System.nanoTime();
         int minY = Math.max(chunk.getWorld().getMinHeight(), settings.minY(chunk.getWorld()));
         int maxY = Math.min(settings.hideBelowY(chunk.getWorld()), chunk.getWorld().getMaxHeight());
         if (minY >= maxY) {
@@ -660,6 +694,7 @@ final class VeilEngine {
                 sent = true;
             }
         }
+        metrics.recordChunkMaskNanos(System.nanoTime() - startNanos);
         return sent;
     }
 
