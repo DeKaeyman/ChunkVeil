@@ -143,6 +143,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         }
         try {
             this.settings = VeilSettings.load(this);
+            logConfigValidationWarnings(settings);
             this.veilEngine = new VeilEngine(this, settings, metrics);
             this.protocolChunkListener = ProtocolChunkListener.start(this, veilEngine, settings, metrics);
             this.veilEngine.start();
@@ -160,6 +161,17 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             getLogger().severe("No fallback masking will be used.");
             getLogger().severe("============================================================");
             stopVeil();
+        }
+    }
+
+    private void logConfigValidationWarnings(VeilSettings settings) {
+        if (settings.validationWarnings().isEmpty()) {
+            return;
+        }
+
+        getLogger().warning("Config validation found " + settings.validationWarnings().size() + " warning(s):");
+        for (String warning : settings.validationWarnings()) {
+            getLogger().warning("- " + warning);
         }
     }
 

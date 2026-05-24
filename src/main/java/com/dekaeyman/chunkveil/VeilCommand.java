@@ -270,9 +270,7 @@ final class VeilCommand implements TabExecutor {
         if (Bukkit.getMinecraftVersion().startsWith("26.")) {
             warnings.add("Minecraft 26.x is not currently supported by the raw chunk rewrite path.");
         }
-        if (settings.enabledWorlds().isEmpty()) {
-            warnings.add("No worlds are enabled in config.yml.");
-        }
+        warnings.addAll(settings.validationWarnings());
         return warnings;
     }
 

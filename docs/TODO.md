@@ -34,14 +34,14 @@ Statuses:
 - [x] Show enabled worlds.
 - [x] Show unsupported setup warnings.
 - [x] Improve `/chunkveil status` grouping.
-- [ ] Add config validation at startup and reload.
-- [ ] Warn when configured worlds do not exist.
-- [ ] Warn when `hide-below-y <= min-y`.
-- [ ] Warn when fake block settings are invalid or risky.
-- [ ] Warn when ray counts are unusually high.
-- [ ] Warn when `hide-air: true` is combined with expensive scan settings.
-- [ ] Warn when Nether or End use suspicious overworld-style fake blocks.
-- [ ] Warn when no worlds are enabled.
+- [x] Add config validation at startup and reload.
+- [x] Warn when configured worlds do not exist.
+- [x] Warn when `hide-below-y <= min-y`.
+- [x] Warn when fake block settings are invalid or risky.
+- [x] Warn when ray counts are unusually high.
+- [x] Warn when `hide-air: true` is combined with expensive scan settings.
+- [x] Warn when Nether or End use suspicious overworld-style fake blocks.
+- [x] Warn when no worlds are enabled.
 
 ## Admin Diagnostics
 
