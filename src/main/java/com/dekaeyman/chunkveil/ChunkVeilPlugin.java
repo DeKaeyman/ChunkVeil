@@ -13,6 +13,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     private VeilMetrics metrics;
     private boolean debugEnabled;
     private boolean veilRuntimeEnabled;
+    private String runtimeDisabledReason;
     private BukkitTask debugTask;
 
     @Override
@@ -21,8 +22,8 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         this.lang = VeilLang.load(this);
         this.metrics = new VeilMetrics();
 
-        startVeil();
         registerCommand();
+        startVeil();
     }
 
     @Override
@@ -36,12 +37,17 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         reloadConfig();
         this.lang = VeilLang.load(this);
         startVeil();
-        if (restoreDebug) {
+        if (restoreDebug && veilRuntimeEnabled) {
             setDebugEnabled(true);
         }
     }
 
     VeilRestoreResult disableVeilRuntime() {
+        return disableVeilRuntime("Disabled by admin command.");
+    }
+
+    VeilRestoreResult disableVeilRuntime(String reason) {
+        runtimeDisabledReason = reason;
         if (!veilRuntimeEnabled) {
             return new VeilRestoreResult(0, 0);
         }
@@ -60,10 +66,21 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
         HandlerList.unregisterAll(this);
         veilRuntimeEnabled = false;
-        getLogger().warning("ChunkVeil runtime disabled. Restored "
+        getLogger().warning("ChunkVeil runtime disabled: " + reason + " Restored "
                 + restoreResult.players() + " players and refreshed "
                 + restoreResult.chunks() + " chunks.");
         return restoreResult;
+    }
+
+    void failClosed(String reason) {
+        getLogger().severe("============================================================");
+        getLogger().severe("ChunkVeil failed closed: " + reason);
+        getLogger().severe("Runtime protection is disabled because underground chunk data cannot be safely rewritten before send.");
+        getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
+                + getServer().getMinecraftVersion() + ", then restart the server.");
+        getLogger().severe("No fallback masking was used.");
+        getLogger().severe("============================================================");
+        disableVeilRuntime(reason);
     }
 
     void enableVeilRuntime() {
@@ -116,18 +133,34 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return veilRuntimeEnabled;
     }
 
+    String runtimeDisabledReason() {
+        return runtimeDisabledReason == null ? "Runtime is disabled." : runtimeDisabledReason;
+    }
+
     private void startVeil() {
         if (veilRuntimeEnabled) {
             return;
         }
-        this.settings = VeilSettings.load(this);
-        this.veilEngine = new VeilEngine(this, settings, metrics);
-        this.veilEngine.start();
-        this.protocolChunkListener = ProtocolChunkListener.start(this, veilEngine, settings, metrics);
+        try {
+            this.settings = VeilSettings.load(this);
+            this.veilEngine = new VeilEngine(this, settings, metrics);
+            this.protocolChunkListener = ProtocolChunkListener.start(this, veilEngine, settings, metrics);
+            this.veilEngine.start();
 
-        getServer().getPluginManager().registerEvents(new VeilListener(veilEngine), this);
-        veilRuntimeEnabled = true;
-        getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
+            getServer().getPluginManager().registerEvents(new VeilListener(veilEngine), this);
+            runtimeDisabledReason = null;
+            veilRuntimeEnabled = true;
+            getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
+        } catch (RuntimeException exception) {
+            runtimeDisabledReason = exception.getMessage();
+            getLogger().severe("============================================================");
+            getLogger().severe("ChunkVeil refused to enable runtime protection: " + exception.getMessage());
+            getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
+                    + getServer().getMinecraftVersion() + ", then restart the server.");
+            getLogger().severe("No fallback masking will be used.");
+            getLogger().severe("============================================================");
+            stopVeil();
+        }
     }
 
     private void stopVeil() {

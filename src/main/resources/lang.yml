@@ -22,6 +22,7 @@ commands:
   status:
     title: "Status"
     runtime: "&7Runtime: {state}"
+    disabled-reason: "&7Disabled reason: &c{reason}"
     worlds: "&7Worlds: &f{worlds}"
     world-overrides: "&7World overrides: &f{worlds}"
     debug: "&7Debug: {state}"
@@ -42,6 +43,7 @@ commands:
   enable:
     already: "Runtime is already enabled."
     done: "Runtime enabled."
+    failed: "&cRuntime could not be enabled: {reason}"
 
   debug:
     usage: "Usage: &f/chunkveil debug <on|off>"

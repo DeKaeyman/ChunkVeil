@@ -22,10 +22,9 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin;
 
 final class ProtocolChunkListener {
-    private final Plugin plugin;
+    private final ChunkVeilPlugin plugin;
     private final ProtocolManager protocolManager;
     private final VeilMetrics metrics;
     private final VeilSettings settings;
@@ -33,11 +32,12 @@ final class ProtocolChunkListener {
     private final AtomicBoolean chunkDataWrappersBroken = new AtomicBoolean();
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean multiBlockChangeRewriteBroken = new AtomicBoolean();
+    private final AtomicBoolean failClosedScheduled = new AtomicBoolean();
     private final Map<Material, ChunkPacketBlockRewriter> blockRewriters = new ConcurrentHashMap<>();
     private final Map<Material, WrappedBlockData> fakeBlockData = new ConcurrentHashMap<>();
     private int airBlockStateId;
 
-    private ProtocolChunkListener(Plugin plugin, ProtocolManager protocolManager, VeilMetrics metrics, VeilSettings settings) {
+    private ProtocolChunkListener(ChunkVeilPlugin plugin, ProtocolManager protocolManager, VeilMetrics metrics, VeilSettings settings) {
         this.plugin = plugin;
         this.protocolManager = protocolManager;
         this.metrics = metrics;
@@ -45,24 +45,26 @@ final class ProtocolChunkListener {
         this.chunkPacketRewriteSupported = supportsChunkPacketRewrite();
     }
 
-    static ProtocolChunkListener start(Plugin plugin, VeilEngine veilEngine, VeilSettings settings, VeilMetrics metrics) {
+    static ProtocolChunkListener start(ChunkVeilPlugin plugin, VeilEngine veilEngine, VeilSettings settings, VeilMetrics metrics) {
         ProtocolManager protocolManager = ProtocolLibrary.getProtocolManager();
+        if (protocolManager == null) {
+            throw new IllegalStateException("ProtocolLib did not provide a protocol manager.");
+        }
+        if (!PacketType.Play.Server.MAP_CHUNK.isSupported()) {
+            throw new IllegalStateException("ProtocolLib does not support outgoing chunk packets on this server version.");
+        }
+
         ProtocolChunkListener listener = new ProtocolChunkListener(plugin, protocolManager, metrics, settings);
         listener.initializeBlockRewriter(settings);
         listener.register(veilEngine, settings);
-        plugin.getLogger().info("ProtocolLib chunk listener enabled.");
-        plugin.getLogger().info("For newer Paper 1.21.x builds, use a compatible ProtocolLib dev build or 5.4.1 runtime jar; "
-                + "5.4.0 stable only officially supports up to 1.21.8 chunk wrappers.");
+        plugin.getLogger().info("ProtocolLib chunk listener enabled with fail-closed packet rewriting.");
         return listener;
     }
 
     private void initializeBlockRewriter(VeilSettings settings) {
         if (!chunkPacketRewriteSupported) {
-            packetBlockRewriteBroken.set(true);
-            plugin.getLogger().info("Packet section rewrite disabled for Minecraft "
-                    + Bukkit.getMinecraftVersion()
-                    + "; hidden chunks will be masked after the chunk is sent.");
-            return;
+            throw new IllegalStateException("Raw chunk packet rewriting is not supported for Minecraft "
+                    + Bukkit.getMinecraftVersion() + ".");
         }
 
         try {
@@ -72,8 +74,7 @@ final class ProtocolChunkListener {
             }
             plugin.getLogger().info("Packet section rewrite enabled with per-world fake block support.");
         } catch (RuntimeException exception) {
-            packetBlockRewriteBroken.set(true);
-            plugin.getLogger().warning("Could not initialize packet section rewrite: " + exception.getMessage());
+            throw new IllegalStateException("Could not initialize packet section rewrite: " + exception.getMessage(), exception);
         }
     }
 
@@ -139,11 +140,9 @@ final class ProtocolChunkListener {
                 if (packetRewritten) {
                     Bukkit.getScheduler().runTask(plugin, () -> veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ));
                 } else if (hidden) {
-                    if (chunkPacketRewriteSupported) {
-                        event.setCancelled(true);
-                    } else {
-                        Bukkit.getScheduler().runTaskLater(plugin, () -> veilEngine.maskChunkAfterRealPacket(player, chunkX, chunkZ), 1L);
-                    }
+                    event.setCancelled(true);
+                    scheduleFailClosed("Could not rewrite hidden chunk packet for chunk "
+                            + chunkX + "," + chunkZ + ". The packet was cancelled and runtime protection will stop.");
                 }
             }
         });
@@ -258,8 +257,8 @@ final class ProtocolChunkListener {
                 }
             });
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect entity spawn packet: "
-                    + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
+            String reason = packetCompatibilityFailure("Could not inspect entity spawn packet", throwable);
+            scheduleFailClosed(reason);
         }
     }
 
@@ -280,8 +279,8 @@ final class ProtocolChunkListener {
             event.setCancelled(true);
             metrics.countEntityPacketCancelled();
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect entity packet " + event.getPacketType() + ": "
-                    + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
+            String reason = packetCompatibilityFailure("Could not inspect entity packet " + event.getPacketType(), throwable);
+            scheduleFailClosed(reason);
         }
     }
 
@@ -394,8 +393,8 @@ final class ProtocolChunkListener {
                 metrics.countBlockChangeRewritten();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not rewrite block change packet: "
-                    + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
+            String reason = packetCompatibilityFailure("Could not rewrite block change packet", throwable);
+            scheduleFailClosed(reason);
         }
     }
 
@@ -471,9 +470,8 @@ final class ProtocolChunkListener {
             }
         } catch (Throwable throwable) {
             if (multiBlockChangeRewriteBroken.compareAndSet(false, true)) {
-                plugin.getLogger().warning("Could not rewrite multi-block change packets: "
-                        + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
-                plugin.getLogger().warning("Disabling multi-block update rewrite for this run.");
+                String reason = packetCompatibilityFailure("Could not rewrite multi-block change packets", throwable);
+                scheduleFailClosed(reason);
             }
         }
     }
@@ -489,8 +487,8 @@ final class ProtocolChunkListener {
                 metrics.countBlockEntityUpdateCancelled();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect block entity update packet: "
-                    + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
+            String reason = packetCompatibilityFailure("Could not inspect block entity update packet", throwable);
+            scheduleFailClosed(reason);
         }
     }
 
@@ -507,10 +505,11 @@ final class ProtocolChunkListener {
                     .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
         } catch (Throwable throwable) {
             if (packetBlockRewriteBroken.compareAndSet(false, true)) {
-                plugin.getLogger().warning("Could not rewrite chunk packet sections for chunk "
-                        + chunkX + "," + chunkZ + ": "
-                        + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
-                plugin.getLogger().warning("Disabling packet section rewrite for this run; hidden chunk packets will be cancelled instead.");
+                String reason = packetCompatibilityFailure(
+                        "Could not rewrite chunk packet sections for chunk " + chunkX + "," + chunkZ,
+                        throwable
+                );
+                scheduleFailClosed(reason);
             }
             return 0;
         }
@@ -536,18 +535,11 @@ final class ProtocolChunkListener {
                 event.getPacket().getLevelChunkData().write(0, chunkData);
             }
         } catch (Throwable throwable) {
-            disableChunkDataWrapperFeatures("Could not strip hidden block entities from chunk packet", throwable);
+            if (chunkDataWrappersBroken.compareAndSet(false, true)) {
+                String reason = packetCompatibilityFailure("Could not strip hidden block entities from chunk packet", throwable);
+                scheduleFailClosed(reason);
+            }
         }
-    }
-
-    private void disableChunkDataWrapperFeatures(String reason, Throwable throwable) {
-        if (!chunkDataWrappersBroken.compareAndSet(false, true)) {
-            return;
-        }
-
-        plugin.getLogger().warning(reason + ": " + throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
-        plugin.getLogger().warning("Disabling ProtocolLib WrappedLevelChunkData features for this run. "
-                + "Your ProtocolLib build appears incompatible with this Paper 1.21.x chunk-data format.");
     }
 
     private WrappedBlockData fakeBlockData(World world) {
@@ -563,5 +555,37 @@ final class ProtocolChunkListener {
             int fakeBlockStateId = NmsBlockStateIds.defaultStateId(material);
             return new ChunkPacketBlockRewriter(fakeBlockStateId, airBlockStateId);
         });
+    }
+
+    private void scheduleFailClosed(String reason) {
+        if (!failClosedScheduled.compareAndSet(false, true)) {
+            return;
+        }
+
+        Bukkit.getScheduler().runTask(plugin, () -> plugin.failClosed(reason));
+    }
+
+    private String packetCompatibilityFailure(String action, Throwable throwable) {
+        return action + ": " + describeThrowable(throwable);
+    }
+
+    private String describeThrowable(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown error";
+        }
+
+        StringBuilder description = new StringBuilder(throwable.getClass().getSimpleName());
+        if (throwable.getMessage() != null && !throwable.getMessage().isBlank()) {
+            description.append(": ").append(throwable.getMessage());
+        }
+
+        Throwable cause = throwable.getCause();
+        if (cause != null && cause != throwable) {
+            description.append(" caused by ").append(cause.getClass().getSimpleName());
+            if (cause.getMessage() != null && !cause.getMessage().isBlank()) {
+                description.append(": ").append(cause.getMessage());
+            }
+        }
+        return description.toString();
     }
 }

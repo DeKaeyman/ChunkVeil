@@ -87,6 +87,11 @@ final class VeilCommand implements TabExecutor {
         VeilMetrics metrics = plugin.metrics();
         sender.sendMessage(lang().message("commands.status.title"));
         sender.sendMessage(lang().message("commands.status.runtime", Map.of("state", state(plugin.veilRuntimeEnabled()))));
+        if (!plugin.veilRuntimeEnabled()) {
+            sender.sendMessage(lang().message("commands.status.disabled-reason", Map.of(
+                    "reason", plugin.runtimeDisabledReason()
+            )));
+        }
         sender.sendMessage(lang().message("commands.status.worlds", Map.of("worlds", settings.enabledWorlds())));
         if (!settings.worlds().isEmpty()) {
             sender.sendMessage(lang().message("commands.status.world-overrides", Map.of("worlds", settings.worlds().keySet())));
@@ -174,7 +179,13 @@ final class VeilCommand implements TabExecutor {
         }
 
         plugin.enableVeilRuntime();
-        sender.sendMessage(lang().message("commands.enable.done"));
+        if (plugin.veilRuntimeEnabled()) {
+            sender.sendMessage(lang().message("commands.enable.done"));
+        } else {
+            sender.sendMessage(lang().message("commands.enable.failed", Map.of(
+                    "reason", plugin.runtimeDisabledReason()
+            )));
+        }
     }
 
     private void debug(CommandSender sender, String[] args) {

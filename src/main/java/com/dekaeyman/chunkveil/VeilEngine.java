@@ -154,37 +154,6 @@ final class VeilEngine {
         }
     }
 
-    void maskChunkAfterRealPacket(Player player, int chunkX, int chunkZ) {
-        if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
-            return;
-        }
-        maskChunkAfterRealPacket(player, chunkX, chunkZ, 0);
-    }
-
-    private void maskChunkAfterRealPacket(Player player, int chunkX, int chunkZ, int attempts) {
-        World world = player.getWorld();
-        if (!settings.isEnabledWorld(world) || isBypassed(player)) {
-            return;
-        }
-        if (!world.isChunkLoaded(chunkX, chunkZ)) {
-            return;
-        }
-
-        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
-        if (!player.isChunkSent(chunk)) {
-            if (attempts < 4) {
-                Bukkit.getScheduler().runTaskLater(plugin, () -> maskChunkAfterRealPacket(player, chunkX, chunkZ, attempts + 1), 1L);
-            }
-            return;
-        }
-
-        ChunkKey chunkKey = ChunkKey.of(world.getName(), chunkX, chunkZ);
-        PlayerVeilState state = states.computeIfAbsent(player.getUniqueId(), ignored -> new PlayerVeilState());
-        if (!state.isChunkVisible(chunkKey)) {
-            state.enqueuePriority(chunkKey, VeilMode.HIDE);
-        }
-    }
-
     boolean shouldHideChunk(Player player, int chunkX, int chunkZ) {
         if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
             return false;

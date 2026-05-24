@@ -2,24 +2,28 @@
 
 # ChunkVeil
 
-ChunkVeil is a free, open-source Paper plugin that helps reduce underground information leaks on Minecraft servers.
+ChunkVeil is a free, open-source **Paper + ProtocolLib anti-xray and anti-ESP protection plugin** focused on underground chunk leaks.
 
-It hides underground chunk data before the client receives it, then reveals chunks only when the player can realistically see or reach them through a view-based scan. The goal is to protect more than ores: caves, hidden bases, underground rooms, block entities, entity spawns, and later block updates can all leak useful information to modified clients.
+Most anti-xray tools focus on ores. ChunkVeil goes further: it helps hide underground chunks, cave shapes, hidden rooms, storage areas, block entities, entity spawns, and later block updates before modified clients can use that information.
 
-ChunkVeil helps reduce xray, ESP, freecam, hidden-base discovery, and PieChart-style underground leaks. It does not claim to make every hacked client impossible to use.
+It is built for server admins who want stronger protection against xray, ESP, freecam scouting, cave discovery, hidden-base discovery, and PieChart-style underground leaks without adding a full gameplay anti-cheat.
 
-## Features
+ChunkVeil reduces what the client can learn. It does not claim to make every hacked client impossible to use.
+
+## Why Use ChunkVeil?
 
 ![More than ore obfuscation](https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-3.png)
 
-- Rewrites outgoing chunk packets for hidden underground sections.
-- Replaces hidden blocks with a configurable fake block.
-- Reveals chunks using a 360-degree view scan instead of a simple distance radius.
-- Keeps revealed chunks visible until they leave the player's render distance.
-- Rewrites later block update packets while a chunk is hidden.
-- Cancels hidden block entity update packets below the hidden Y range.
-- Optionally hides underground entities.
-- Includes admin commands, permissions, metrics, debug logging, reload/refresh, and emergency runtime disable.
+- **Anti-xray for more than ores** - Hide underground terrain, ores, caves, and base layouts.
+- **Anti-ESP support** - Optionally hide underground entities while their chunk is hidden.
+- **Freecam resistance** - Underground chunks stay masked until the player can realistically see or reach them.
+- **Packet-level protection** - Rewrites hidden chunk data before it reaches the client when supported.
+- **Block update protection** - Later block changes are also masked while a chunk is hidden.
+- **Block entity protection** - Hidden block entity update packets below the protected Y range are cancelled.
+- **View-based reveals** - Uses a 360-degree visibility scan instead of revealing everything in a simple radius.
+- **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
+- **Admin tools** - Includes status, reload, refresh, debug metrics, permissions, and emergency disable.
+- **Open source** - MIT licensed and easy to audit.
 
 ## Requirements
 
@@ -40,8 +44,10 @@ ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and 
 ![How ChunkVeil works](https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-4.png)
 
 1. Underground data starts hidden from the player.
-2. ChunkVeil scans what the player can reveal using view rays.
-3. Real chunks are restored when they become visible or reachable.
+2. Hidden underground blocks are replaced with a configurable fake block.
+3. ChunkVeil scans what the player can realistically reveal using view rays.
+4. Real chunks are restored when they become visible or reachable.
+5. Later hidden block/entity updates are masked or cancelled where possible.
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 
@@ -67,13 +73,11 @@ This is the recommended default. Air stays air, so caves and empty pockets may s
 
 When `hide-air` is enabled, ChunkVeil also replaces underground air with the fake block. This makes cave shapes, rooms, and hidden base layouts much harder to read from the client side, but it costs more because many more blocks need to be rewritten.
 
-## Compatibility With Anti-Xray
+## Compatibility With Paper Anti-Xray
 
 ChunkVeil can run alongside Paper's built-in anti-xray and packet-based plugins such as Orebfuscator. Paper anti-xray usually runs before ProtocolLib sees the outgoing chunk packet, and ChunkVeil then applies its underground hiding pass to the packet the player is about to receive.
 
-ChunkVeil's ProtocolLib listener uses a late packet priority and declares Orebfuscator as an optional soft dependency so, when both plugins are installed, ChunkVeil is more likely to apply its hidden-chunk rewrite after other packet modifiers. Hidden chunks and hidden block updates are still rewritten for players who already have the chunk loaded.
-
-When another plugin also rewrites the same chunk, block-change, or multi-block-change packets after ChunkVeil, that plugin may change the final fake block appearance. It should not reveal real underground blocks unless that plugin deliberately restores real block data. For the strictest protection, test your exact plugin stack with `/chunkveil status`, an xray/freecam client, and both `hide-air: false` and `hide-air: true` depending on how much cave/base shape you want to conceal.
+For the strictest protection, test your exact plugin stack with `/chunkveil status`, an xray/freecam client, and both `hide-air: false` and `hide-air: true` depending on how much cave/base shape you want to conceal.
 
 ## Installation
 
@@ -84,15 +88,31 @@ When another plugin also rewrites the same chunk, block-change, or multi-block-c
 5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.
 6. Run `/chunkveil status` in-game or from console.
 
+## Recommended Default
+
+```yaml
+worlds:
+  world:
+    enabled: true
+    hide-below-y: 0
+    min-y: -64
+    default-fake-block: DEEPSLATE
+    hide-air: false
+    hide-entities: true
+    hide-players: false
+```
+
+`hide-air: false` is recommended for most servers because it is much lighter. Use `hide-air: true` when hiding cave shapes and hidden base layouts is more important than performance.
+
 ## Commands
 
-- `/chunkveil status`
-- `/chunkveil reload`
-- `/chunkveil refresh`
-- `/chunkveil disable`
-- `/chunkveil enable`
-- `/chunkveil debug on|off`
-- `/chunkveil version`
+- `/chunkveil status` - Shows runtime state, worlds, queue size, rewrite status, and metrics.
+- `/chunkveil reload` - Reloads config and language files.
+- `/chunkveil refresh` - Forces a rescan and refresh for online players.
+- `/chunkveil disable` - Emergency switch that restores real chunks for online players.
+- `/chunkveil enable` - Starts the runtime again.
+- `/chunkveil debug on|off` - Toggles debug metrics.
+- `/chunkveil version` - Shows the plugin version.
 
 Alias: `/cv`
 
@@ -105,6 +125,16 @@ Alias: `/cv`
 - `chunkveil.toggle`
 - `chunkveil.debug`
 - `chunkveil.bypass`
+
+## Good First Test
+
+1. Join with an admin account.
+2. Run `/chunkveil status`.
+3. Go underground below the configured `hide-below-y`.
+4. Move in and out of caves or tunnels.
+5. Test `/chunkveil refresh`.
+6. Test `/chunkveil disable` to restore real chunks for online players.
+7. Use `/chunkveil debug on` while testing.
 
 ## Bug Reports
 
