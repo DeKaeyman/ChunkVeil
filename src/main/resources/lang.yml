@@ -19,6 +19,8 @@ commands:
     unknown-command: "&cUnknown command. Available commands:"
     status: "/{label} status"
     compat: "/{label} compat"
+    inspect: "/{label} inspect <player>"
+    report: "/{label} report"
     reload: "/{label} reload"
     refresh: "/{label} refresh"
     disable: "/{label} disable"
@@ -72,6 +74,27 @@ commands:
     worlds: "{badge} &7Enabled worlds: &f{worlds}"
     warning: "{badge} &e{warning}"
     no-warnings: "{badge} &7No compatibility warnings detected."
+
+  inspect:
+    title: "&3&m                                "
+    heading: "&bChunkVeil Player Inspect"
+    usage: "&cUsage: &f/chunkveil inspect <player>"
+    not-found: "&cPlayer not found: &f{player}"
+    disabled: "{badge} &7Runtime is disabled. Showing available player/server state only."
+    player: "{badge} &7Player: &f{player}"
+    world: "{badge} &7World: &f{world}"
+    bypass: "{badge} &7Bypass permission: {state}"
+    client-view-distance: "{badge} &7Client view distance: &f{distance}"
+    effective-scan-radius: "{badge} &7Effective scan radius: &f{radius} chunks"
+    visible-chunks: "{badge} &7Visible chunks: &f{chunks}"
+    queued-chunks: "{badge} &7Queued chunk updates: &f{chunks}"
+    hidden-entities: "{badge} &7Hidden entities: &f{entities}"
+    last-scan: "{badge} &7Last reveal scan: &f{age}"
+    current-chunk: "{badge} &7Current chunk state: &f{state}"
+
+  report:
+    created: "Diagnostic report created: &f{file}"
+    failed: "&cCould not create diagnostic report: {reason}"
 
   reload: "Reloaded config and language, then refreshed online players."
   refresh: "Refreshed &f{players}&7 online players."

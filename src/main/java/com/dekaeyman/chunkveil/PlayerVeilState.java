@@ -76,6 +76,10 @@ final class PlayerVeilState {
         return queuedModes.size();
     }
 
+    int appliedChunkCount() {
+        return appliedModes.size();
+    }
+
     void markEntityHidden(int entityId, UUID uuid) {
         hiddenEntityIds.add(entityId);
         if (uuid != null) {
@@ -100,12 +104,24 @@ final class PlayerVeilState {
         return hiddenEntityUuids;
     }
 
+    int hiddenEntityCount() {
+        return hiddenEntityIds.size();
+    }
+
     boolean isChunkVisible(ChunkKey chunkKey) {
         return visibleChunks.contains(chunkKey);
     }
 
     Set<ChunkKey> visibleChunkSnapshot() {
         return Set.copyOf(visibleChunks);
+    }
+
+    int visibleChunkCount() {
+        return visibleChunks.size();
+    }
+
+    long lastViewRevealRefreshMillis() {
+        return lastViewRevealRefreshMillis;
     }
 
     void rememberVisibleChunks(Set<ChunkKey> chunkKeys) {

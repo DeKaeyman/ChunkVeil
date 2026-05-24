@@ -45,26 +45,26 @@ Statuses:
 
 ## Admin Diagnostics
 
-- [ ] Add `/chunkveil inspect <player>`.
-- [ ] Show player world.
-- [ ] Show bypass permission state.
-- [ ] Show client view distance.
-- [ ] Show effective scan radius.
-- [ ] Show visible chunk count.
-- [ ] Show queued chunk update count.
-- [ ] Show hidden entity count.
-- [ ] Show last reveal scan age.
-- [ ] Show whether the player's current chunk is hidden or revealed.
-- [ ] Add `/chunkveil report`.
-- [ ] Include plugin version in report.
-- [ ] Include server version in report.
-- [ ] Include Java version in report.
-- [ ] Include ProtocolLib version in report.
-- [ ] Include enabled worlds in report.
-- [ ] Include chunk packet rewrite status in report.
-- [ ] Include last compatibility failure reason in report.
-- [ ] Include key config values in report.
-- [ ] Include metrics snapshot in report.
+- [x] Add `/chunkveil inspect <player>`.
+- [x] Show player world.
+- [x] Show bypass permission state.
+- [x] Show client view distance.
+- [x] Show effective scan radius.
+- [x] Show visible chunk count.
+- [x] Show queued chunk update count.
+- [x] Show hidden entity count.
+- [x] Show last reveal scan age.
+- [x] Show whether the player's current chunk is hidden or revealed.
+- [x] Add `/chunkveil report`.
+- [x] Include plugin version in report.
+- [x] Include server version in report.
+- [x] Include Java version in report.
+- [x] Include ProtocolLib version in report.
+- [x] Include enabled worlds in report.
+- [x] Include chunk packet rewrite status in report.
+- [x] Include last compatibility failure reason in report.
+- [x] Include key config values in report.
+- [x] Include metrics snapshot in report.
 
 ## Performance
 

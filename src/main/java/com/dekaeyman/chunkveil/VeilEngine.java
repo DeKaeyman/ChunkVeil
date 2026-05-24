@@ -315,6 +315,61 @@ final class VeilEngine {
         return queuedChunks;
     }
 
+    PlayerInspection inspectPlayer(Player player) {
+        PlayerVeilState state = states.get(player.getUniqueId());
+        ChunkKey currentChunk = ChunkKey.of(
+                player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4
+        );
+        boolean enabledWorld = settings.isEnabledWorld(player.getWorld());
+        boolean bypassed = isBypassed(player);
+        boolean visible = state != null && state.isChunkVisible(currentChunk);
+        String currentChunkState;
+        if (!enabledWorld) {
+            currentChunkState = "world disabled";
+        } else if (bypassed) {
+            currentChunkState = "bypassed";
+        } else {
+            currentChunkState = visible ? "revealed" : "hidden";
+        }
+
+        return new PlayerInspection(
+                player.getName(),
+                player.getWorld().getName(),
+                bypassed,
+                player.getClientViewDistance(),
+                effectiveScanRadius(player),
+                state == null ? 0 : state.visibleChunkCount(),
+                state == null ? 0 : state.queuedChunkCount(),
+                state == null ? 0 : state.hiddenEntityCount(),
+                state == null ? 0L : state.lastViewRevealRefreshMillis(),
+                currentChunkState,
+                state == null ? 0 : state.appliedChunkCount()
+        );
+    }
+
+    record PlayerInspection(
+            String playerName,
+            String worldName,
+            boolean bypassed,
+            int clientViewDistance,
+            int effectiveScanRadius,
+            int visibleChunkCount,
+            int queuedChunkCount,
+            int hiddenEntityCount,
+            long lastViewRevealRefreshMillis,
+            String currentChunkState,
+            int appliedChunkCount
+    ) {
+        long lastViewRevealAgeMillis() {
+            if (lastViewRevealRefreshMillis <= 0L) {
+                return -1L;
+            }
+            return Math.max(0L, System.currentTimeMillis() - lastViewRevealRefreshMillis);
+        }
+    }
+
     private boolean isBypassed(Player player) {
         return player.hasPermission("chunkveil.bypass");
     }

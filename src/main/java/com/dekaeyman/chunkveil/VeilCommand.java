@@ -1,5 +1,11 @@
 package com.dekaeyman.chunkveil;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -12,7 +18,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
     private final ChunkVeilPlugin plugin;
 
@@ -31,6 +38,8 @@ final class VeilCommand implements TabExecutor {
         switch (subcommand) {
             case "status" -> sendStatus(sender);
             case "compat" -> sendCompat(sender);
+            case "inspect" -> inspect(sender, args);
+            case "report" -> report(sender);
             case "reload" -> reload(sender);
             case "refresh" -> refresh(sender);
             case "disable", "off" -> disable(sender);
@@ -61,6 +70,16 @@ final class VeilCommand implements TabExecutor {
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("debug") && canUse(sender, "chunkveil.debug")) {
             return List.of("on", "off");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("inspect") && canUse(sender, "chunkveil.inspect")) {
+            List<String> matches = new ArrayList<>();
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.getName().toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                    matches.add(player.getName());
+                }
+            }
+            return matches;
         }
         return List.of();
     }
@@ -253,6 +272,102 @@ final class VeilCommand implements TabExecutor {
         }
     }
 
+    private void inspect(CommandSender sender, String[] args) {
+        if (!canUse(sender, "chunkveil.inspect")) {
+            deny(sender);
+            return;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(lang().message("commands.inspect.usage"));
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            sender.sendMessage(lang().message("commands.inspect.not-found", Map.of("player", args[1])));
+            return;
+        }
+
+        sender.sendMessage(lang().message("commands.inspect.title"));
+        sender.sendMessage(lang().message("commands.inspect.heading"));
+        if (!plugin.veilRuntimeEnabled() || plugin.veilEngine() == null) {
+            sender.sendMessage(lang().message("commands.inspect.disabled", Map.of("badge", warnBadge())));
+            sender.sendMessage(lang().message("commands.inspect.player", Map.of(
+                    "badge", infoBadge(),
+                    "player", target.getName()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.world", Map.of(
+                    "badge", infoBadge(),
+                    "world", target.getWorld().getName()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.bypass", Map.of(
+                    "badge", badge(!target.hasPermission("chunkveil.bypass")),
+                    "state", state(target.hasPermission("chunkveil.bypass"))
+            )));
+            return;
+        }
+
+        VeilEngine.PlayerInspection inspection = plugin.veilEngine().inspectPlayer(target);
+        sender.sendMessage(lang().message("commands.inspect.player", Map.of(
+                "badge", infoBadge(),
+                "player", inspection.playerName()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.world", Map.of(
+                "badge", infoBadge(),
+                "world", inspection.worldName()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.bypass", Map.of(
+                "badge", inspection.bypassed() ? warnBadge() : okBadge(),
+                "state", state(inspection.bypassed())
+        )));
+        sender.sendMessage(lang().message("commands.inspect.client-view-distance", Map.of(
+                "badge", infoBadge(),
+                "distance", inspection.clientViewDistance()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.effective-scan-radius", Map.of(
+                "badge", infoBadge(),
+                "radius", inspection.effectiveScanRadius()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.visible-chunks", Map.of(
+                "badge", infoBadge(),
+                "chunks", inspection.visibleChunkCount()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.queued-chunks", Map.of(
+                "badge", inspection.queuedChunkCount() > 0 ? warnBadge() : okBadge(),
+                "chunks", inspection.queuedChunkCount()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.hidden-entities", Map.of(
+                "badge", infoBadge(),
+                "entities", inspection.hiddenEntityCount()
+        )));
+        sender.sendMessage(lang().message("commands.inspect.last-scan", Map.of(
+                "badge", inspection.lastViewRevealAgeMillis() < 0L ? warnBadge() : infoBadge(),
+                "age", age(inspection.lastViewRevealAgeMillis())
+        )));
+        sender.sendMessage(lang().message("commands.inspect.current-chunk", Map.of(
+                "badge", "hidden".equals(inspection.currentChunkState()) ? warnBadge() : okBadge(),
+                "state", inspection.currentChunkState()
+        )));
+    }
+
+    private void report(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.report")) {
+            deny(sender);
+            return;
+        }
+
+        try {
+            Path reportFile = writeReport();
+            sender.sendMessage(lang().message("commands.report.created", Map.of(
+                    "file", reportFile.toString()
+            )));
+        } catch (IOException exception) {
+            sender.sendMessage(lang().message("commands.report.failed", Map.of(
+                    "reason", exception.getMessage()
+            )));
+        }
+    }
+
     private List<String> compatibilityWarnings(Plugin protocolLib, VeilSettings settings) {
         List<String> warnings = new ArrayList<>();
         if (protocolLib == null || !protocolLib.isEnabled()) {
@@ -279,6 +394,140 @@ final class VeilCommand implements TabExecutor {
             return "not installed";
         }
         return protocolLib.getDescription().getVersion() + (protocolLib.isEnabled() ? "" : " (disabled)");
+    }
+
+    private Path writeReport() throws IOException {
+        Path reportsDirectory = plugin.getDataFolder().toPath().resolve("reports");
+        Files.createDirectories(reportsDirectory);
+
+        String timestamp = LocalDateTime.now().format(REPORT_TIME_FORMAT);
+        Path reportFile = reportsDirectory.resolve("chunkveil-report-" + timestamp + ".txt");
+        Files.writeString(reportFile, reportContent(), StandardCharsets.UTF_8);
+        return reportFile;
+    }
+
+    private String reportContent() {
+        StringBuilder report = new StringBuilder();
+        VeilSettings settings = plugin.settings();
+        VeilMetrics metrics = plugin.metrics();
+        Plugin protocolLib = Bukkit.getPluginManager().getPlugin("ProtocolLib");
+
+        appendSection(report, "ChunkVeil Diagnostic Report");
+        appendLine(report, "Generated", LocalDateTime.now().toString());
+        appendLine(report, "Plugin version", plugin.getDescription().getVersion());
+        appendLine(report, "Runtime enabled", plugin.veilRuntimeEnabled());
+        appendLine(report, "Runtime disabled reason", plugin.runtimeDisabledReason());
+        appendLine(report, "Debug enabled", plugin.debugEnabled());
+
+        appendSection(report, "Server");
+        appendLine(report, "Minecraft", Bukkit.getMinecraftVersion());
+        appendLine(report, "Server", Bukkit.getVersion());
+        appendLine(report, "Bukkit/Paper API", Bukkit.getBukkitVersion());
+        appendLine(report, "Java", Runtime.version());
+
+        appendSection(report, "ProtocolLib");
+        appendLine(report, "ProtocolLib", protocolLibVersion(protocolLib));
+        appendLine(report, "ProtocolLib listener active", plugin.protocolListenerActive());
+        appendLine(report, "Raw chunk packet rewrite active", plugin.packetRewriteActive());
+
+        appendSection(report, "Worlds");
+        appendLine(report, "Enabled worlds", worlds(settings.enabledWorlds()));
+        appendLine(report, "Configured worlds", worlds(settings.worlds().keySet()));
+        for (Map.Entry<String, VeilWorldSettings> entry : settings.worlds().entrySet()) {
+            VeilWorldSettings worldSettings = entry.getValue();
+            report.append("- ").append(entry.getKey()).append(": ")
+                    .append("enabled=").append(worldSettings.enabled())
+                    .append(", min-y=").append(worldSettings.minY())
+                    .append(", hide-below-y=").append(worldSettings.hideBelowY())
+                    .append(", fake-block=").append(worldSettings.defaultFakeBlock())
+                    .append(", hide-air=").append(worldSettings.hideAir())
+                    .append(", hide-entities=").append(worldSettings.hideEntities())
+                    .append(", hide-players=").append(worldSettings.hidePlayers())
+                    .append(System.lineSeparator());
+        }
+
+        appendSection(report, "Reveal Config");
+        appendLine(report, "front horizontal rays", settings.viewRevealFrontHorizontalRays());
+        appendLine(report, "side horizontal rays", settings.viewRevealSideHorizontalRays());
+        appendLine(report, "back horizontal rays", settings.viewRevealBackHorizontalRays());
+        appendLine(report, "vertical rays", settings.viewRevealVerticalRays());
+        appendLine(report, "occlusion grace blocks", settings.viewRevealOcclusionGraceBlocks());
+        appendLine(report, "refresh millis", settings.viewRevealRefreshMillis());
+        appendLine(report, "force refresh millis", settings.viewRevealForceRefreshMillis());
+        appendLine(report, "move threshold blocks", settings.viewRevealMoveThresholdBlocks());
+        appendLine(report, "yaw threshold degrees", settings.viewRevealYawThresholdDegrees());
+        appendLine(report, "pitch threshold degrees", settings.viewRevealPitchThresholdDegrees());
+
+        appendSection(report, "Validation Warnings");
+        if (settings.validationWarnings().isEmpty()) {
+            report.append("- none").append(System.lineSeparator());
+        } else {
+            for (String warning : settings.validationWarnings()) {
+                report.append("- ").append(warning).append(System.lineSeparator());
+            }
+        }
+
+        appendSection(report, "Metrics Snapshot");
+        appendLine(report, "chunk packets", metrics.chunkPackets());
+        appendLine(report, "hidden chunk packets", metrics.hiddenChunkPackets());
+        appendLine(report, "rewritten chunk packets", metrics.rewrittenChunkPackets());
+        appendLine(report, "unrewritten hidden chunk packets", metrics.unrewrittenHiddenChunkPackets());
+        appendLine(report, "chunk update packets sent", metrics.chunkUpdatePacketsSent());
+        appendLine(report, "block changes rewritten", metrics.blockChangesRewritten());
+        appendLine(report, "multi-block changes rewritten", metrics.multiBlockChangesRewritten());
+        appendLine(report, "block entity updates cancelled", metrics.blockEntityUpdatesCancelled());
+        appendLine(report, "entity spawns cancelled", metrics.entitySpawnsCancelled());
+        appendLine(report, "entity packets cancelled", metrics.entityPacketsCancelled());
+
+        appendSection(report, "Tracked Runtime State");
+        VeilEngine veilEngine = plugin.veilEngine();
+        appendLine(report, "tracked players", veilEngine == null ? 0 : veilEngine.trackedPlayerCount());
+        appendLine(report, "queued chunks", veilEngine == null ? 0 : veilEngine.queuedChunkCount());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            report.append("- player=").append(player.getName())
+                    .append(", world=").append(player.getWorld().getName())
+                    .append(", bypass=").append(player.hasPermission("chunkveil.bypass"));
+            if (veilEngine != null) {
+                VeilEngine.PlayerInspection inspection = veilEngine.inspectPlayer(player);
+                report.append(", client-view-distance=").append(inspection.clientViewDistance())
+                        .append(", effective-scan-radius=").append(inspection.effectiveScanRadius())
+                        .append(", visible-chunks=").append(inspection.visibleChunkCount())
+                        .append(", queued-chunks=").append(inspection.queuedChunkCount())
+                        .append(", hidden-entities=").append(inspection.hiddenEntityCount())
+                        .append(", last-scan-age=").append(age(inspection.lastViewRevealAgeMillis()))
+                        .append(", current-chunk=").append(inspection.currentChunkState());
+            }
+            report.append(System.lineSeparator());
+        }
+
+        return report.toString();
+    }
+
+    private void appendSection(StringBuilder report, String title) {
+        report.append(System.lineSeparator()).append("== ").append(title).append(" ==").append(System.lineSeparator());
+    }
+
+    private void appendLine(StringBuilder report, String key, Object value) {
+        report.append(key).append(": ").append(value).append(System.lineSeparator());
+    }
+
+    private String age(long millis) {
+        if (millis < 0L) {
+            return "never";
+        }
+        if (millis < 1000L) {
+            return millis + "ms ago";
+        }
+        long seconds = millis / 1000L;
+        if (seconds < 60L) {
+            return seconds + "s ago";
+        }
+        long minutes = seconds / 60L;
+        if (minutes < 60L) {
+            return minutes + "m " + (seconds % 60L) + "s ago";
+        }
+        long hours = minutes / 60L;
+        return hours + "h " + (minutes % 60L) + "m ago";
     }
 
     private String worlds(Iterable<String> worlds) {
@@ -399,6 +648,8 @@ final class VeilCommand implements TabExecutor {
             case "reload" -> "chunkveil.reload";
             case "status" -> "chunkveil.status";
             case "compat" -> "chunkveil.compat";
+            case "inspect" -> "chunkveil.inspect";
+            case "report" -> "chunkveil.report";
             case "debug" -> "chunkveil.debug";
             case "refresh" -> "chunkveil.refresh";
             case "disable", "enable" -> "chunkveil.toggle";
