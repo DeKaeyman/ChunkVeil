@@ -30,7 +30,7 @@ final class VeilEngine {
     private final VeilMetrics metrics;
     private final Map<UUID, PlayerVeilState> states = new ConcurrentHashMap<>();
     private final Map<Material, BlockData> fakeBlockData = new ConcurrentHashMap<>();
-    private final Map<Integer, List<Vector>> viewRevealDirectionCache = new ConcurrentHashMap<>();
+    private final Map<DirectionCacheKey, List<Vector>> viewRevealDirectionCache = new ConcurrentHashMap<>();
     private BukkitTask workerTask;
 
     VeilEngine(Plugin plugin, VeilSettings settings, VeilMetrics metrics) {
@@ -237,6 +237,14 @@ final class VeilEngine {
     }
 
     private void processQueuedChunks() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!states.containsKey(player.getUniqueId())
+                    && settings.isEnabledWorld(player.getWorld())
+                    && !isBypassed(player)) {
+                refreshPlayer(player);
+            }
+        }
+
         long startNanos = System.nanoTime();
         try {
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -244,7 +252,10 @@ final class VeilEngine {
                 int processedPriorityChunks = 0;
 
                 PlayerVeilState state = states.get(player.getUniqueId());
-                if (state == null || !settings.isEnabledWorld(player.getWorld())) {
+                if (state == null) {
+                    continue;
+                }
+                if (!settings.isEnabledWorld(player.getWorld())) {
                     continue;
                 }
                 if (isBypassed(player)) {
@@ -593,20 +604,69 @@ final class VeilEngine {
 
     private List<Vector> buildViewRevealDirections(float playerYaw) {
         int yawBucket = yawBucket(playerYaw);
-        return viewRevealDirectionCache.computeIfAbsent(yawBucket, this::buildViewRevealDirectionsForBucket);
+        RayProfile rayProfile = rayProfile();
+        DirectionCacheKey cacheKey = new DirectionCacheKey(
+                yawBucket,
+                rayProfile.frontHorizontalRays(),
+                rayProfile.sideHorizontalRays(),
+                rayProfile.backHorizontalRays(),
+                rayProfile.verticalRays()
+        );
+        return viewRevealDirectionCache.computeIfAbsent(cacheKey, this::buildViewRevealDirectionsForKey);
     }
 
-    private List<Vector> buildViewRevealDirectionsForBucket(int yawBucket) {
-        int horizontalRays = settings.viewRevealFrontHorizontalRays()
-                + settings.viewRevealSideHorizontalRays() * 2
-                + settings.viewRevealBackHorizontalRays();
-        List<Vector> directions = new ArrayList<>(horizontalRays * settings.viewRevealVerticalRays());
-        float bucketYaw = yawBucket * settings.viewRevealYawCacheBucketDegrees();
-        addViewRevealDirections(directions, bucketYaw, -70.0D, 70.0D, settings.viewRevealFrontHorizontalRays());
-        addViewRevealDirections(directions, bucketYaw, 70.0D, 145.0D, settings.viewRevealSideHorizontalRays());
-        addViewRevealDirections(directions, bucketYaw, -145.0D, -70.0D, settings.viewRevealSideHorizontalRays());
-        addViewRevealDirections(directions, bucketYaw, 145.0D, 215.0D, settings.viewRevealBackHorizontalRays());
+    private List<Vector> buildViewRevealDirectionsForKey(DirectionCacheKey cacheKey) {
+        int horizontalRays = cacheKey.frontHorizontalRays()
+                + cacheKey.sideHorizontalRays() * 2
+                + cacheKey.backHorizontalRays();
+        List<Vector> directions = new ArrayList<>(horizontalRays * cacheKey.verticalRays());
+        float bucketYaw = cacheKey.yawBucket() * settings.viewRevealYawCacheBucketDegrees();
+        addViewRevealDirections(directions, bucketYaw, -70.0D, 70.0D, cacheKey.frontHorizontalRays(), cacheKey.verticalRays());
+        addViewRevealDirections(directions, bucketYaw, 70.0D, 145.0D, cacheKey.sideHorizontalRays(), cacheKey.verticalRays());
+        addViewRevealDirections(directions, bucketYaw, -145.0D, -70.0D, cacheKey.sideHorizontalRays(), cacheKey.verticalRays());
+        addViewRevealDirections(directions, bucketYaw, 145.0D, 215.0D, cacheKey.backHorizontalRays(), cacheKey.verticalRays());
         return List.copyOf(directions);
+    }
+
+    private RayProfile rayProfile() {
+        if (!settings.adaptiveScanQualityEnabled()) {
+            return new RayProfile(
+                    settings.viewRevealFrontHorizontalRays(),
+                    settings.viewRevealSideHorizontalRays(),
+                    settings.viewRevealBackHorizontalRays(),
+                    settings.viewRevealVerticalRays()
+            );
+        }
+
+        double tps = recentTps();
+        double threshold = settings.adaptiveScanReduceBelowTps();
+        if (tps >= threshold) {
+            return new RayProfile(
+                    settings.viewRevealFrontHorizontalRays(),
+                    settings.viewRevealSideHorizontalRays(),
+                    settings.viewRevealBackHorizontalRays(),
+                    settings.viewRevealVerticalRays()
+            );
+        }
+
+        double scale = Math.max(0.0D, Math.min(1.0D, tps / threshold));
+        return new RayProfile(
+                scaledRayCount(settings.viewRevealFrontHorizontalRays(), settings.adaptiveScanMinimumFrontHorizontalRays(), scale),
+                scaledRayCount(settings.viewRevealSideHorizontalRays(), settings.adaptiveScanMinimumSideHorizontalRays(), scale),
+                scaledRayCount(settings.viewRevealBackHorizontalRays(), settings.adaptiveScanMinimumBackHorizontalRays(), scale),
+                scaledRayCount(settings.viewRevealVerticalRays(), settings.adaptiveScanMinimumVerticalRays(), scale)
+        );
+    }
+
+    private double recentTps() {
+        double[] tps = Bukkit.getTPS();
+        return tps.length == 0 ? 20.0D : Math.min(20.0D, Math.max(0.0D, tps[0]));
+    }
+
+    private int scaledRayCount(int configured, int minimum, double scale) {
+        int boundedMinimum = Math.min(configured, minimum);
+        int reducedRange = configured - boundedMinimum;
+        return boundedMinimum + (int) Math.round(reducedRange * scale);
     }
 
     private int yawBucket(float playerYaw) {
@@ -616,12 +676,12 @@ final class VeilEngine {
         return Math.floorMod(Math.floorDiv(normalizedYaw + bucketDegrees / 2, bucketDegrees), bucketCount);
     }
 
-    private void addViewRevealDirections(List<Vector> directions, float playerYaw, double minYawOffset, double maxYawOffset, int horizontalRays) {
+    private void addViewRevealDirections(List<Vector> directions, float playerYaw, double minYawOffset, double maxYawOffset, int horizontalRays, int verticalRays) {
         for (int horizontal = 0; horizontal < horizontalRays; horizontal++) {
             double yawOffset = horizontalOffset(horizontal, horizontalRays, minYawOffset, maxYawOffset);
             double yaw = Math.toRadians(playerYaw + yawOffset);
-            for (int vertical = 0; vertical < settings.viewRevealVerticalRays(); vertical++) {
-                double pitch = Math.toRadians(verticalPitch(vertical, settings.viewRevealVerticalRays()));
+            for (int vertical = 0; vertical < verticalRays; vertical++) {
+                double pitch = Math.toRadians(verticalPitch(vertical, verticalRays));
                 double horizontalLength = Math.cos(pitch);
                 directions.add(new Vector(
                         -Math.sin(yaw) * horizontalLength,
@@ -694,7 +754,7 @@ final class VeilEngine {
                 sent = true;
             }
         }
-        metrics.recordChunkMaskNanos(System.nanoTime() - startNanos);
+        metrics.recordChunkUpdateMaskNanos(System.nanoTime() - startNanos);
         return sent;
     }
 
@@ -728,5 +788,11 @@ final class VeilEngine {
                 world.refreshChunk(chunkX, chunkZ);
             }
         }, 2L);
+    }
+
+    record RayProfile(int frontHorizontalRays, int sideHorizontalRays, int backHorizontalRays, int verticalRays) {
+    }
+
+    record DirectionCacheKey(int yawBucket, int frontHorizontalRays, int sideHorizontalRays, int backHorizontalRays, int verticalRays) {
     }
 }

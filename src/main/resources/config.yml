@@ -1,48 +1,49 @@
-# ChunkVeil is designed for the overworld. Nether and End support is optional,
-# but disabled by default because their terrain and fake-block choices differ.
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║                       C H U N K V E I L                             ║
+# ║         Packet-level underground protection for Paper servers        ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# Quick start: enable your worlds below, set hide-below-y to the Y level
+# you want to protect, and restart. Most servers do not need to touch
+# anything else.
 
-# Global performance tuning.
-# Higher ray counts reveal more accurately but cost more CPU. The reveal scan
-# is weighted toward where the player is looking: front > sides > behind.
-view-reveal-front-horizontal-rays: 10
-view-reveal-side-horizontal-rays: 5
-view-reveal-back-horizontal-rays: 3
-view-reveal-vertical-rays: 10
-view-reveal-occlusion-grace-blocks: 2
-view-reveal-refresh-millis: 150
-# Skip rescans while a player stays in nearly the same place and view angle.
-# The force interval catches edge cases such as sparse back-facing rays.
-view-reveal-force-refresh-millis: 1200
-view-reveal-move-threshold-blocks: 3.0
-view-reveal-yaw-threshold-degrees: 12.0
-view-reveal-pitch-threshold-degrees: 8.0
 
-# Per-tick work budgets and timing controls.
-# These limits protect the main server tick. Higher values reveal/mask faster,
-# but can spend more of the 50ms tick budget when many players are active.
-performance:
-  # Hidden chunks from fresh chunk packets are priority work.
-  max-priority-chunk-updates-per-player-per-tick: 24
-  # Regular visibility changes are intentionally slower and smoother.
-  max-regular-chunk-updates-per-player-per-tick: 1
-  # Entity scans are throttled separately from chunk reveal scans.
-  entity-scan-interval-millis: 500
-  entity-scan-max-entities-per-player: 256
-  # Yaw buckets cache ray directions. Smaller = slightly more accurate, more cache entries.
-  view-reveal-yaw-cache-bucket-degrees: 5
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  WORLDS                                                              │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# Each world is configured independently. Nether and End are included
+# below but disabled by default — their terrain and fake-block choices
+# differ from the overworld, so enable them only if needed.
 
-# World settings. Each world is independent; no block/entity settings are global.
 worlds:
   world:
     enabled: true
-    # Blocks from min-y up to, but not including, hide-below-y are hidden.
+
+    # Y range that is hidden from clients.
+    # Blocks from min-y up to (not including) hide-below-y are replaced.
     hide-below-y: 0
     min-y: -64
+
+    # Block type sent to clients in place of real underground blocks.
+    # Use a solid opaque block that fits the dimension to avoid visual
+    # artefacts. DEEPSLATE blends naturally below y=0 in the overworld.
     default-fake-block: DEEPSLATE
-    # false is faster: air stays air and only non-air blocks are faked.
+
+    # true  = air underground is also faked, hiding cave shapes entirely.
+    #         Stronger protection, but noticeably higher CPU cost.
+    # false = air stays air, only solid blocks are replaced.
+    #         Faster. Cave and tunnel outlines are still visible to clients.
     hide-air: false
+
+    # Hide underground entities (mobs, minecarts, item frames, etc.)
+    # from other players before they enter the visible zone.
     hide-entities: true
+
+    # Also hide underground players. Usually false — client-side player
+    # hiding can cause visual glitches for the affected player.
     hide-players: false
+
   world_nether:
     enabled: false
     hide-below-y: 32
@@ -51,6 +52,7 @@ worlds:
     hide-air: false
     hide-entities: true
     hide-players: false
+
   world_the_end:
     enabled: false
     hide-below-y: 0
@@ -59,3 +61,124 @@ worlds:
     hide-air: false
     hide-entities: true
     hide-players: false
+
+
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  REVEAL SCAN                                                         │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# ChunkVeil casts rays from the player's eye to determine which
+# underground chunks they can actually see. Chunks that are visible
+# receive real block data; all others receive fake blocks.
+#
+# Ray counts are weighted toward the player's view direction:
+#   front > sides > back
+#
+# More rays = more accurate reveals, higher CPU cost per scan.
+
+view-reveal-front-horizontal-rays: 10
+view-reveal-side-horizontal-rays: 5
+view-reveal-back-horizontal-rays: 3
+view-reveal-vertical-rays: 10
+
+# How many solid occluding blocks a ray may pass through before stopping.
+# 0 = strict line-of-sight. 2 = small buffer to reduce visible pop-in.
+view-reveal-occlusion-grace-blocks: 2
+
+# How often the reveal scan runs per player (milliseconds).
+# Lower = more responsive reveals, higher CPU cost.
+view-reveal-refresh-millis: 150
+
+# ── Advanced reveal tuning ─────────────────────────────────────────────
+# Only change these if you understand the reveal scan behaviour and are
+# seeing specific issues with pop-in or performance.
+
+# Minimum interval between forced full rescans (milliseconds).
+# Acts as a safety net for edge cases like sparse back-facing rays.
+view-reveal-force-refresh-millis: 1200
+
+# Skip a rescan when the player has barely moved or turned since the last
+# scan. Saves CPU when players are standing still or walking slowly.
+view-reveal-move-threshold-blocks: 3.0
+view-reveal-yaw-threshold-degrees: 12.0
+view-reveal-pitch-threshold-degrees: 8.0
+
+
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  PERFORMANCE                                                         │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# Work budgets that protect the main server tick from ChunkVeil overhead.
+# Increase limits on small servers for faster reveals; lower them on
+# large servers to keep tick time predictable.
+
+performance:
+  # Chunks hidden by incoming packet rewrites are high-priority work.
+  max-priority-chunk-updates-per-player-per-tick: 24
+  # Regular visibility changes (player movement) are spread over more ticks.
+  max-regular-chunk-updates-per-player-per-tick: 1
+
+  # How often underground entity visibility is rechecked per player.
+  entity-scan-interval-millis: 500
+  entity-scan-max-entities-per-player: 256
+
+  # ── Advanced performance tuning ───────────────────────────────────────
+  # Only change these if you are profiling ChunkVeil's tick cost and know
+  # what each setting does. Wrong values here can hurt performance or
+  # cause missed reveals.
+
+  # Reveal ray directions are cached per yaw bucket to avoid recomputing
+  # vectors every scan. Smaller bucket = slightly more precise, more entries.
+  view-reveal-yaw-cache-bucket-degrees: 5
+
+  # Automatically reduce ray counts when the server is under load.
+  # Protects TPS at the cost of slightly looser reveals during lag spikes.
+  adaptive-scan-quality:
+    enabled: false
+    # Start reducing rays when the 1-minute TPS average drops below this.
+    reduce-rays-below-tps: 18.5
+    # Floor ray counts during maximum lag. Keep all values above zero
+    # to maintain meaningful underground protection.
+    minimum-front-horizontal-rays: 6
+    minimum-side-horizontal-rays: 3
+    minimum-back-horizontal-rays: 1
+    minimum-vertical-rays: 6
+
+
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  PACKET PROTECTION                                                   │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# Secondary packet types filtered for hidden underground areas.
+# All options default to true for maximum protection.
+#
+# !! IMPORTANT !!
+# These settings control only what packet data is sent to each client.
+# They do NOT affect the actual server world in any way — explosions
+# still destroy blocks and deal damage, sounds still play for other
+# players nearby, and so on. Only the watching client is affected.
+#
+# Set an option to false only if you want players to see or hear
+# specific effects from hidden underground areas.
+
+packet-protection:
+  # Hides the explosion visual and audio effect on the client when the
+  # explosion center is inside a hidden underground zone.
+  # The explosion still happens on the server (blocks destroyed, damage dealt).
+  cancel-explosions: true
+
+  # Hides block-break particles and their associated sound effect when
+  # they occur at a hidden underground position.
+  # Without this, the exact material of a mined block is encoded in the
+  # effect data and readable by packet-inspection clients.
+  cancel-world-events: true
+
+  # Hides the mining crack animation for blocks at hidden underground
+  # positions. Without this, a nearby player can pinpoint exactly where
+  # someone else is digging underground.
+  cancel-block-crack: true
+
+  # Hides positional sounds (piston clicks, chest open/close, furnace
+  # crackling, etc.) when the sound source is inside a hidden underground
+  # position. Prevents activity inference from block sounds alone.
+  cancel-positional-sounds: true

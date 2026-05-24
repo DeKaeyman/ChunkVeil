@@ -33,9 +33,13 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     void reloadVeil() {
         boolean restoreDebug = debugEnabled;
+        if (veilEngine != null) {
+            veilEngine.restoreAllPlayersToRealChunks();
+        }
         stopVeil();
         reloadConfig();
         this.lang = VeilLang.load(this);
+        this.metrics = new VeilMetrics();
         startVeil();
         if (restoreDebug && veilRuntimeEnabled) {
             setDebugEnabled(true);
@@ -218,10 +222,16 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " trackedPlayers=" + veilEngine.trackedPlayerCount()
                 + " entitySpawnsCancelled=" + metrics.entitySpawnsCancelled()
                 + " entityPacketsCancelled=" + metrics.entityPacketsCancelled()
+                + " explosionPacketsCancelled=" + metrics.explosionPacketsCancelled()
+                + " worldEventPacketsCancelled=" + metrics.worldEventPacketsCancelled()
+                + " blockBreakAnimationPacketsCancelled=" + metrics.blockBreakAnimationPacketsCancelled()
+                + " soundPacketsCancelled=" + metrics.soundPacketsCancelled()
                 + " revealScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanAverageMillis())
                 + " revealScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanMaxMillis())
-                + " chunkMaskAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkMaskAverageMillis())
-                + " chunkMaskMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkMaskMaxMillis())
+                + " packetRewriteAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.packetChunkRewriteAverageMillis())
+                + " packetRewriteMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.packetChunkRewriteMaxMillis())
+                + " chunkUpdateMaskAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkUpdateMaskAverageMillis())
+                + " chunkUpdateMaskMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkUpdateMaskMaxMillis())
                 + " entityScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanAverageMillis())
                 + " entityScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanMaxMillis())
                 + " queueAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingAverageMillis())

@@ -114,6 +114,31 @@ final class ProtocolChunkListener {
                     cancelHiddenBlockEntityUpdate(event, veilEngine);
                     return;
                 }
+                if (event.getPacketType() == PacketType.Play.Server.EXPLOSION) {
+                    if (settings.cancelExplosionsInHiddenZones()) {
+                        cancelHiddenExplosion(event, veilEngine);
+                    }
+                    return;
+                }
+                if (event.getPacketType() == PacketType.Play.Server.WORLD_EVENT) {
+                    if (settings.cancelWorldEventsInHiddenZones()) {
+                        cancelHiddenWorldEvent(event, veilEngine);
+                    }
+                    return;
+                }
+                if (event.getPacketType() == PacketType.Play.Server.BLOCK_BREAK_ANIMATION) {
+                    if (settings.cancelBlockCrackInHiddenZones()) {
+                        cancelHiddenBlockCrack(event, veilEngine);
+                    }
+                    return;
+                }
+                if (event.getPacketType() == PacketType.Play.Server.CUSTOM_SOUND_EFFECT
+                        || event.getPacketType() == PacketType.Play.Server.NAMED_SOUND_EFFECT) {
+                    if (settings.cancelPositionalSoundsInHiddenZones()) {
+                        cancelHiddenPositionalSound(event, veilEngine);
+                    }
+                    return;
+                }
 
                 Player player = event.getPlayer();
                 int chunkX;
@@ -184,6 +209,11 @@ final class ProtocolChunkListener {
         addIfSupported(packetTypes, PacketType.Play.Server.REMOVE_ENTITY_EFFECT);
         addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_SOUND);
         addIfSupported(packetTypes, PacketType.Play.Server.COLLECT);
+        addIfSupported(packetTypes, PacketType.Play.Server.EXPLOSION);
+        addIfSupported(packetTypes, PacketType.Play.Server.WORLD_EVENT);
+        addIfSupported(packetTypes, PacketType.Play.Server.BLOCK_BREAK_ANIMATION);
+        addIfSupported(packetTypes, PacketType.Play.Server.CUSTOM_SOUND_EFFECT);
+        addIfSupported(packetTypes, PacketType.Play.Server.NAMED_SOUND_EFFECT);
         return packetTypes;
     }
 
@@ -492,6 +522,77 @@ final class ProtocolChunkListener {
         }
     }
 
+    private void cancelHiddenExplosion(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            Double centerX = event.getPacket().getDoubles().readSafely(0);
+            Double centerY = event.getPacket().getDoubles().readSafely(1);
+            Double centerZ = event.getPacket().getDoubles().readSafely(2);
+            if (centerX == null || centerY == null || centerZ == null) {
+                return;
+            }
+            if (veilEngine.shouldHideBlock(event.getPlayer(),
+                    (int) Math.floor(centerX), (int) Math.floor(centerY), (int) Math.floor(centerZ))) {
+                event.setCancelled(true);
+                metrics.countExplosionPacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            plugin.getLogger().warning("Could not inspect explosion packet: " + throwable.getMessage());
+        }
+    }
+
+    private void cancelHiddenWorldEvent(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            BlockPosition position = event.getPacket().getBlockPositionModifier().readSafely(0);
+            if (position == null) {
+                return;
+            }
+            if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
+                event.setCancelled(true);
+                metrics.countWorldEventPacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            plugin.getLogger().warning("Could not inspect world event packet: " + throwable.getMessage());
+        }
+    }
+
+    private void cancelHiddenBlockCrack(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            BlockPosition position = event.getPacket().getBlockPositionModifier().readSafely(0);
+            if (position == null) {
+                return;
+            }
+            if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
+                event.setCancelled(true);
+                metrics.countBlockBreakAnimationPacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            plugin.getLogger().warning("Could not inspect block crack packet: " + throwable.getMessage());
+        }
+    }
+
+    private void cancelHiddenPositionalSound(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            // Position is encoded as fixed-point integers: block_coord * 8.
+            // The sound entry and source category are exposed via specialised modifiers,
+            // so getIntegers() indices 0/1/2 are the x/y/z position fields.
+            Integer fixedX = event.getPacket().getIntegers().readSafely(0);
+            Integer fixedY = event.getPacket().getIntegers().readSafely(1);
+            Integer fixedZ = event.getPacket().getIntegers().readSafely(2);
+            if (fixedX == null || fixedY == null || fixedZ == null) {
+                return;
+            }
+            int blockX = fixedX >> 3;
+            int blockY = fixedY >> 3;
+            int blockZ = fixedZ >> 3;
+            if (veilEngine.shouldHideBlock(event.getPlayer(), blockX, blockY, blockZ)) {
+                event.setCancelled(true);
+                metrics.countSoundPacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            plugin.getLogger().warning("Could not inspect positional sound packet: " + throwable.getMessage());
+        }
+    }
+
     private int rewriteHiddenChunkSections(
             PacketEvent event,
             Player player,
@@ -504,7 +605,7 @@ final class ProtocolChunkListener {
             long startNanos = System.nanoTime();
             int rewrittenSections = rewriterFor(settings.defaultFakeBlock(world))
                     .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
-            metrics.recordChunkMaskNanos(System.nanoTime() - startNanos);
+            metrics.recordPacketChunkRewriteNanos(System.nanoTime() - startNanos);
             return rewrittenSections;
         } catch (Throwable throwable) {
             if (packetBlockRewriteBroken.compareAndSet(false, true)) {

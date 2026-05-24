@@ -13,9 +13,14 @@ final class VeilMetrics {
     private final LongAdder blockEntityUpdatesCancelled = new LongAdder();
     private final LongAdder entitySpawnsCancelled = new LongAdder();
     private final LongAdder entityPacketsCancelled = new LongAdder();
+    private final LongAdder explosionPacketsCancelled = new LongAdder();
+    private final LongAdder worldEventPacketsCancelled = new LongAdder();
+    private final LongAdder blockBreakAnimationPacketsCancelled = new LongAdder();
+    private final LongAdder soundPacketsCancelled = new LongAdder();
     private final LongAdder chunkUpdatePacketsSent = new LongAdder();
     private final Timing revealScanTiming = new Timing();
-    private final Timing chunkMaskTiming = new Timing();
+    private final Timing packetChunkRewriteTiming = new Timing();
+    private final Timing chunkUpdateMaskTiming = new Timing();
     private final Timing entityScanTiming = new Timing();
     private final Timing queueProcessingTiming = new Timing();
 
@@ -51,6 +56,22 @@ final class VeilMetrics {
         entityPacketsCancelled.increment();
     }
 
+    void countExplosionPacketCancelled() {
+        explosionPacketsCancelled.increment();
+    }
+
+    void countWorldEventPacketCancelled() {
+        worldEventPacketsCancelled.increment();
+    }
+
+    void countBlockBreakAnimationPacketCancelled() {
+        blockBreakAnimationPacketsCancelled.increment();
+    }
+
+    void countSoundPacketCancelled() {
+        soundPacketsCancelled.increment();
+    }
+
     void countChunkUpdatePacketSent() {
         chunkUpdatePacketsSent.increment();
     }
@@ -59,8 +80,12 @@ final class VeilMetrics {
         revealScanTiming.record(nanos);
     }
 
-    void recordChunkMaskNanos(long nanos) {
-        chunkMaskTiming.record(nanos);
+    void recordPacketChunkRewriteNanos(long nanos) {
+        packetChunkRewriteTiming.record(nanos);
+    }
+
+    void recordChunkUpdateMaskNanos(long nanos) {
+        chunkUpdateMaskTiming.record(nanos);
     }
 
     void recordEntityScanNanos(long nanos) {
@@ -107,6 +132,22 @@ final class VeilMetrics {
         return entityPacketsCancelled.sum();
     }
 
+    long explosionPacketsCancelled() {
+        return explosionPacketsCancelled.sum();
+    }
+
+    long worldEventPacketsCancelled() {
+        return worldEventPacketsCancelled.sum();
+    }
+
+    long blockBreakAnimationPacketsCancelled() {
+        return blockBreakAnimationPacketsCancelled.sum();
+    }
+
+    long soundPacketsCancelled() {
+        return soundPacketsCancelled.sum();
+    }
+
     long chunkUpdatePacketsSent() {
         return chunkUpdatePacketsSent.sum();
     }
@@ -123,16 +164,28 @@ final class VeilMetrics {
         return revealScanTiming.samples();
     }
 
-    double chunkMaskAverageMillis() {
-        return chunkMaskTiming.averageMillis();
+    double packetChunkRewriteAverageMillis() {
+        return packetChunkRewriteTiming.averageMillis();
     }
 
-    double chunkMaskMaxMillis() {
-        return chunkMaskTiming.maxMillis();
+    double packetChunkRewriteMaxMillis() {
+        return packetChunkRewriteTiming.maxMillis();
     }
 
-    long chunkMaskSamples() {
-        return chunkMaskTiming.samples();
+    long packetChunkRewriteSamples() {
+        return packetChunkRewriteTiming.samples();
+    }
+
+    double chunkUpdateMaskAverageMillis() {
+        return chunkUpdateMaskTiming.averageMillis();
+    }
+
+    double chunkUpdateMaskMaxMillis() {
+        return chunkUpdateMaskTiming.maxMillis();
+    }
+
+    long chunkUpdateMaskSamples() {
+        return chunkUpdateMaskTiming.samples();
     }
 
     double entityScanAverageMillis() {

@@ -20,9 +20,12 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Packet-level protection** - Rewrites hidden chunk data before it reaches the client when supported.
 - **Block update protection** - Later block changes are also masked while a chunk is hidden.
 - **Block entity protection** - Hidden block entity update packets below the protected Y range are cancelled.
+- **Secondary leak protection** - Can cancel hidden underground explosion, world event, block break animation, and positional sound packets.
 - **View-based reveals** - Uses a 360-degree visibility scan instead of revealing everything in a simple radius.
+- **Adaptive scan quality** - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 - **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
-- **Admin tools** - Includes status, reload, refresh, debug metrics, permissions, and emergency disable.
+- **Fail-closed startup/runtime** - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables protection instead of pretending it is safe.
+- **Admin tools** - Includes status, compatibility diagnostics, player inspect, diagnostic reports, performance prediction, reload, refresh, debug metrics, permissions, and emergency disable.
 - **Open source** - MIT licensed and easy to audit.
 
 ## Requirements
@@ -48,6 +51,8 @@ ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and 
 3. ChunkVeil scans what the player can realistically reveal using view rays.
 4. Real chunks are restored when they become visible or reachable.
 5. Later hidden block/entity updates are masked or cancelled where possible.
+
+If the main packet rewrite path cannot start, or if a critical packet rewrite incompatibility appears at runtime, ChunkVeil fails closed and disables its runtime protection. This avoids giving admins false confidence when underground data cannot be hidden before send.
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 
@@ -107,6 +112,10 @@ worlds:
 ## Commands
 
 - `/chunkveil status` - Shows runtime state, worlds, queue size, rewrite status, and metrics.
+- `/chunkveil compat` - Shows server, Java, ProtocolLib, rewrite, runtime, and warning diagnostics.
+- `/chunkveil inspect <player>` - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
+- `/chunkveil report` - Creates a diagnostic report file for troubleshooting.
+- `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Estimates performance from live timing samples.
 - `/chunkveil reload` - Reloads config and language files.
 - `/chunkveil refresh` - Forces a rescan and refresh for online players.
 - `/chunkveil disable` - Emergency switch that restores real chunks for online players.
@@ -120,21 +129,29 @@ Alias: `/cv`
 
 - `chunkveil.admin`
 - `chunkveil.status`
+- `chunkveil.compat`
+- `chunkveil.inspect`
+- `chunkveil.report`
+- `chunkveil.predict`
 - `chunkveil.reload`
 - `chunkveil.refresh`
 - `chunkveil.toggle`
 - `chunkveil.debug`
+- `chunkveil.version`
 - `chunkveil.bypass`
 
 ## Good First Test
 
 1. Join with an admin account.
 2. Run `/chunkveil status`.
-3. Go underground below the configured `hide-below-y`.
-4. Move in and out of caves or tunnels.
-5. Test `/chunkveil refresh`.
-6. Test `/chunkveil disable` to restore real chunks for online players.
-7. Use `/chunkveil debug on` while testing.
+3. Run `/chunkveil compat` and check for warnings.
+4. Go underground below the configured `hide-below-y`.
+5. Move in and out of caves or tunnels.
+6. Test `/chunkveil inspect <yourname>`.
+7. Test `/chunkveil report` before reporting bugs.
+8. Test `/chunkveil refresh`.
+9. Test `/chunkveil disable` to restore real chunks for online players.
+10. Use `/chunkveil debug on` while testing.
 
 ## Bug Reports
 

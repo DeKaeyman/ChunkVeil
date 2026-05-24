@@ -1,5 +1,6 @@
 package com.dekaeyman.chunkveil;
 
+import com.destroystokyo.paper.event.player.PlayerClientOptionsChangeEvent;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.event.EventHandler;
@@ -62,6 +63,11 @@ final class VeilListener implements Listener {
     @EventHandler
     void onPlayerQuit(PlayerQuitEvent event) {
         veilEngine.removePlayer(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onPlayerClientOptionsChange(PlayerClientOptionsChangeEvent event) {
+        veilEngine.refreshPlayer(event.getPlayer());
     }
 
     @EventHandler

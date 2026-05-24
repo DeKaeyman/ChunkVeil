@@ -4,6 +4,8 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.WrappedLevelChunkData;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.bukkit.World;
 
 final class ChunkPacketBlockRewriter {
@@ -25,14 +27,14 @@ final class ChunkPacketBlockRewriter {
             return 0;
         }
 
-        int minSection = Math.floorDiv(world.getMinHeight(), 16);
+        int minHeight = world.getMinHeight();
+        int minSection = Math.floorDiv(minHeight, 16);
         int sectionCount = Math.floorDiv(world.getMaxHeight() - world.getMinHeight(), 16);
-        int fullHiddenSections = Math.floorDiv(hideBelowY - world.getMinHeight(), 16);
-        if (fullHiddenSections <= 0) {
+        int hiddenRangeHeight = hideBelowY - minHeight;
+        if (hiddenRangeHeight <= 0) {
             return 0;
         }
 
-        fullHiddenSections = Math.min(fullHiddenSections, sectionCount);
         PacketReader reader = new PacketReader(input);
         ByteArrayOutputStream output = new ByteArrayOutputStream(input.length);
         int handledHiddenSections = 0;
@@ -40,8 +42,8 @@ final class ChunkPacketBlockRewriter {
 
         for (int sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
             int sectionY = minSection + sectionIndex;
-            boolean hiddenSection = sectionIndex < fullHiddenSections
-                    && sectionY * 16 < hideBelowY;
+            int sectionMinY = sectionY * 16;
+            boolean hiddenSection = sectionMinY < hideBelowY;
 
             int nonEmptyBlockCount = reader.readUnsignedShort();
             PalettedContainer blockContainer = reader.readPalettedContainer(8, BLOCKS_PER_SECTION);
@@ -49,18 +51,10 @@ final class ChunkPacketBlockRewriter {
 
             if (hiddenSection) {
                 handledHiddenSections++;
-                if (hideAir) {
-                    writeShort(output, BLOCKS_PER_SECTION);
-                    writeSingleValuedPalette(output, fakeBlockStateId);
-                    rewrittenSections++;
-                } else if (nonEmptyBlockCount > 0) {
-                    writeShort(output, nonEmptyBlockCount);
-                    writeAirAwarePalette(output, blockContainer);
-                    rewrittenSections++;
-                } else {
-                    writeShort(output, nonEmptyBlockCount);
-                    output.writeBytes(blockContainer.bytes());
-                }
+                RewrittenSection rewrittenSection = rewriteSection(blockContainer, sectionMinY, hideBelowY, hideAir);
+                writeShort(output, rewrittenSection.nonEmptyBlockCount());
+                output.writeBytes(rewrittenSection.bytes());
+                rewrittenSections++;
             } else {
                 writeShort(output, nonEmptyBlockCount);
                 output.writeBytes(blockContainer.bytes());
@@ -83,31 +77,82 @@ final class ChunkPacketBlockRewriter {
         return handledHiddenSections;
     }
 
-    private void writeAirAwarePalette(ByteArrayOutputStream output, PalettedContainer source) {
-        if (source.singleValue()) {
-            writeSingleValuedPalette(output, source.singleStateId() == airBlockStateId ? airBlockStateId : fakeBlockStateId);
+    private RewrittenSection rewriteSection(PalettedContainer source, int sectionMinY, int hideBelowY, boolean hideAir) {
+        int[] stateIds = new int[BLOCKS_PER_SECTION];
+        int nonEmptyBlockCount = 0;
+        for (int blockIndex = 0; blockIndex < BLOCKS_PER_SECTION; blockIndex++) {
+            int localY = blockIndex >> 8;
+            boolean hiddenBlock = sectionMinY + localY < hideBelowY;
+            int stateId = source.stateId(blockIndex);
+            if (hiddenBlock && (hideAir || stateId != airBlockStateId)) {
+                stateId = fakeBlockStateId;
+            }
+
+            stateIds[blockIndex] = stateId;
+            if (stateId != airBlockStateId) {
+                nonEmptyBlockCount++;
+            }
+        }
+
+        ByteArrayOutputStream output = new ByteArrayOutputStream(source.bytes().length);
+        writePalette(output, stateIds);
+        return new RewrittenSection(output.toByteArray(), nonEmptyBlockCount);
+    }
+
+    private void writePalette(ByteArrayOutputStream output, int[] stateIds) {
+        Map<Integer, Integer> palette = new LinkedHashMap<>();
+        for (int stateId : stateIds) {
+            palette.computeIfAbsent(stateId, ignored -> palette.size());
+        }
+
+        if (palette.size() == 1) {
+            writeSingleValuedPalette(output, stateIds[0]);
             return;
         }
 
-        output.write(BLOCK_PALETTE_BITS);
-        writeVarInt(output, 2);
-        writeVarInt(output, airBlockStateId);
-        writeVarInt(output, fakeBlockStateId);
-
-        long[] values = new long[256];
-        for (int blockIndex = 0; blockIndex < BLOCKS_PER_SECTION; blockIndex++) {
-            if (source.stateId(blockIndex) == airBlockStateId) {
-                continue;
+        if (palette.size() <= (1 << 8)) {
+            int bitsPerEntry = Math.max(BLOCK_PALETTE_BITS, bitsNeeded(palette.size() - 1));
+            output.write(bitsPerEntry);
+            writeVarInt(output, palette.size());
+            for (int stateId : palette.keySet()) {
+                writeVarInt(output, stateId);
             }
-
-            int dataIndex = blockIndex >> 4;
-            int bitOffset = (blockIndex & 0xF) * BLOCK_PALETTE_BITS;
-            values[dataIndex] |= 1L << bitOffset;
+            writePackedValues(output, stateIds, bitsPerEntry, palette);
+            return;
         }
 
-        for (long value : values) {
-            writeLong(output, value);
+        int maxStateId = 0;
+        for (int stateId : stateIds) {
+            maxStateId = Math.max(maxStateId, stateId);
         }
+        int bitsPerEntry = Math.max(9, bitsNeeded(maxStateId));
+        output.write(bitsPerEntry);
+        writePackedValues(output, stateIds, bitsPerEntry, null);
+    }
+
+    private void writePackedValues(ByteArrayOutputStream output, int[] stateIds, int bitsPerEntry, Map<Integer, Integer> palette) {
+        int entriesPerLong = Math.floorDiv(Long.SIZE, bitsPerEntry);
+        int arrayLength = Math.floorDiv(BLOCKS_PER_SECTION + entriesPerLong - 1, entriesPerLong);
+        long[] values = new long[arrayLength];
+        long mask = (1L << bitsPerEntry) - 1L;
+
+        for (int blockIndex = 0; blockIndex < BLOCKS_PER_SECTION; blockIndex++) {
+            int value = palette == null ? stateIds[blockIndex] : palette.get(stateIds[blockIndex]);
+            int dataIndex = blockIndex / entriesPerLong;
+            int bitOffset = (blockIndex % entriesPerLong) * bitsPerEntry;
+            values[dataIndex] |= ((long) value & mask) << bitOffset;
+        }
+
+        for (long packedValue : values) {
+            writeLong(output, packedValue);
+        }
+    }
+
+    private static int bitsNeeded(int maxValue) {
+        if (maxValue <= 0) {
+            return 1;
+        }
+        return Integer.SIZE - Integer.numberOfLeadingZeros(maxValue);
     }
 
     private static void writeSingleValuedPalette(ByteArrayOutputStream output, int stateId) {
@@ -132,6 +177,9 @@ final class ChunkPacketBlockRewriter {
         for (int shift = 56; shift >= 0; shift -= 8) {
             output.write((int) (value >>> shift) & 0xFF);
         }
+    }
+
+    private record RewrittenSection(byte[] bytes, int nonEmptyBlockCount) {
     }
 
     private record PalettedContainer(byte[] bytes, int bitsPerEntry, int[] palette, long[] data, int entryCount) {

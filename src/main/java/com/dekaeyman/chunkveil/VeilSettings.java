@@ -29,6 +29,16 @@ record VeilSettings(
         int entityScanIntervalMillis,
         int entityScanMaxEntitiesPerPlayer,
         int viewRevealYawCacheBucketDegrees,
+        boolean adaptiveScanQualityEnabled,
+        double adaptiveScanReduceBelowTps,
+        int adaptiveScanMinimumFrontHorizontalRays,
+        int adaptiveScanMinimumSideHorizontalRays,
+        int adaptiveScanMinimumBackHorizontalRays,
+        int adaptiveScanMinimumVerticalRays,
+        boolean cancelExplosionsInHiddenZones,
+        boolean cancelWorldEventsInHiddenZones,
+        boolean cancelBlockCrackInHiddenZones,
+        boolean cancelPositionalSoundsInHiddenZones,
         List<String> validationWarnings
 ) {
     static VeilSettings load(Plugin plugin) {
@@ -88,6 +98,18 @@ record VeilSettings(
         int entityScanIntervalMillis = Math.max(100, intValue(performance, "entity-scan-interval-millis", 500));
         int entityScanMaxEntitiesPerPlayer = Math.max(16, intValue(performance, "entity-scan-max-entities-per-player", 256));
         int viewRevealYawCacheBucketDegrees = Math.max(1, intValue(performance, "view-reveal-yaw-cache-bucket-degrees", 5));
+        ConfigurationSection adaptiveScanQuality = performance == null ? null : performance.getConfigurationSection("adaptive-scan-quality");
+        boolean adaptiveScanQualityEnabled = adaptiveScanQuality != null && adaptiveScanQuality.getBoolean("enabled", false);
+        double adaptiveScanReduceBelowTps = Math.max(1.0D, doubleValue(adaptiveScanQuality, "reduce-rays-below-tps", 18.5D));
+        int adaptiveScanMinimumFrontHorizontalRays = Math.max(1, intValue(adaptiveScanQuality, "minimum-front-horizontal-rays", 6));
+        int adaptiveScanMinimumSideHorizontalRays = Math.max(1, intValue(adaptiveScanQuality, "minimum-side-horizontal-rays", 3));
+        int adaptiveScanMinimumBackHorizontalRays = Math.max(1, intValue(adaptiveScanQuality, "minimum-back-horizontal-rays", 1));
+        int adaptiveScanMinimumVerticalRays = Math.max(1, intValue(adaptiveScanQuality, "minimum-vertical-rays", 6));
+        ConfigurationSection packetProtection = config.getConfigurationSection("packet-protection");
+        boolean cancelExplosionsInHiddenZones = booleanValue(packetProtection, "cancel-explosions", true);
+        boolean cancelWorldEventsInHiddenZones = booleanValue(packetProtection, "cancel-world-events", true);
+        boolean cancelBlockCrackInHiddenZones = booleanValue(packetProtection, "cancel-block-crack", true);
+        boolean cancelPositionalSoundsInHiddenZones = booleanValue(packetProtection, "cancel-positional-sounds", true);
         validateGlobalSettings(
                 viewRevealFrontHorizontalRays,
                 viewRevealSideHorizontalRays,
@@ -104,6 +126,19 @@ record VeilSettings(
                 viewRevealBackHorizontalRays,
                 viewRevealVerticalRays,
                 viewRevealRefreshMillis,
+                validationWarnings
+        );
+        validateAdaptiveScanQuality(
+                adaptiveScanQualityEnabled,
+                adaptiveScanReduceBelowTps,
+                adaptiveScanMinimumFrontHorizontalRays,
+                adaptiveScanMinimumSideHorizontalRays,
+                adaptiveScanMinimumBackHorizontalRays,
+                adaptiveScanMinimumVerticalRays,
+                viewRevealFrontHorizontalRays,
+                viewRevealSideHorizontalRays,
+                viewRevealBackHorizontalRays,
+                viewRevealVerticalRays,
                 validationWarnings
         );
 
@@ -124,6 +159,16 @@ record VeilSettings(
                 entityScanIntervalMillis,
                 entityScanMaxEntitiesPerPlayer,
                 viewRevealYawCacheBucketDegrees,
+                adaptiveScanQualityEnabled,
+                adaptiveScanReduceBelowTps,
+                adaptiveScanMinimumFrontHorizontalRays,
+                adaptiveScanMinimumSideHorizontalRays,
+                adaptiveScanMinimumBackHorizontalRays,
+                adaptiveScanMinimumVerticalRays,
+                cancelExplosionsInHiddenZones,
+                cancelWorldEventsInHiddenZones,
+                cancelBlockCrackInHiddenZones,
+                cancelPositionalSoundsInHiddenZones,
                 List.copyOf(validationWarnings)
         );
     }
@@ -163,10 +208,6 @@ record VeilSettings(
         return world(world).hidePlayers();
     }
 
-    int hiddenSectionCount(World world) {
-        return world(world).hiddenSectionCount();
-    }
-
     Material replacementFor(World world, Material realBlock) {
         return world(world).replacementFor(realBlock);
     }
@@ -203,6 +244,14 @@ record VeilSettings(
 
     private static int intValue(ConfigurationSection section, String path, int fallback) {
         return section == null ? fallback : section.getInt(path, fallback);
+    }
+
+    private static double doubleValue(ConfigurationSection section, String path, double fallback) {
+        return section == null ? fallback : section.getDouble(path, fallback);
+    }
+
+    private static boolean booleanValue(ConfigurationSection section, String path, boolean fallback) {
+        return section == null ? fallback : section.getBoolean(path, fallback);
     }
 
     private static void validateGlobalSettings(
@@ -267,6 +316,34 @@ record VeilSettings(
                 validationWarnings.add("World '" + entry.getKey() + "' has hide-air enabled with " + totalRays
                         + " rays and " + refreshMillis + "ms refresh. This can be expensive on busy servers.");
             }
+        }
+    }
+
+    private static void validateAdaptiveScanQuality(
+            boolean enabled,
+            double reduceBelowTps,
+            int minimumFrontRays,
+            int minimumSideRays,
+            int minimumBackRays,
+            int minimumVerticalRays,
+            int configuredFrontRays,
+            int configuredSideRays,
+            int configuredBackRays,
+            int configuredVerticalRays,
+            List<String> validationWarnings
+    ) {
+        if (!enabled) {
+            return;
+        }
+        if (reduceBelowTps >= 20.0D) {
+            validationWarnings.add("Adaptive scan quality reduce-rays-below-tps is " + reduceBelowTps
+                    + ". Values at or above 20 may reduce scan quality almost all the time.");
+        }
+        if (minimumFrontRays > configuredFrontRays
+                || minimumSideRays > configuredSideRays
+                || minimumBackRays > configuredBackRays
+                || minimumVerticalRays > configuredVerticalRays) {
+            validationWarnings.add("Adaptive scan quality minimum ray counts are above configured ray counts. They will not reduce scan cost.");
         }
     }
 

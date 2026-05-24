@@ -50,15 +50,23 @@ final class VeilCommand implements TabExecutor {
             case "disable", "off" -> disable(sender);
             case "enable", "on" -> enable(sender);
             case "debug" -> debug(sender, args);
-            case "version" -> sender.sendMessage(lang().message("commands.version", Map.of(
-                    "version", plugin.getDescription().getVersion()
-            )));
+            case "version" -> version(sender);
             default -> {
                 sender.sendMessage(lang().message("commands.help.unknown-command"));
                 sendHelp(sender, label);
             }
         }
         return true;
+    }
+
+    private void version(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.version")) {
+            deny(sender);
+            return;
+        }
+        sender.sendMessage(lang().message("commands.version", Map.of(
+                "version", plugin.getDescription().getVersion()
+        )));
     }
 
     @Override
@@ -201,10 +209,18 @@ final class VeilCommand implements TabExecutor {
                 "spawns", metrics.entitySpawnsCancelled(),
                 "packets", metrics.entityPacketsCancelled()
         )));
+        sender.sendMessage(lang().message("commands.status.secondary-packets", Map.of(
+                "badge", infoBadge(),
+                "explosions", metrics.explosionPacketsCancelled(),
+                "events", metrics.worldEventPacketsCancelled(),
+                "cracks", metrics.blockBreakAnimationPacketsCancelled(),
+                "sounds", metrics.soundPacketsCancelled()
+        )));
 
         sender.sendMessage(lang().message("commands.status.section-timings"));
         sendTiming(sender, "Reveal scan", metrics.revealScanAverageMillis(), metrics.revealScanMaxMillis(), metrics.revealScanSamples());
-        sendTiming(sender, "Chunk masking", metrics.chunkMaskAverageMillis(), metrics.chunkMaskMaxMillis(), metrics.chunkMaskSamples());
+        sendTiming(sender, "Packet chunk rewrite", metrics.packetChunkRewriteAverageMillis(), metrics.packetChunkRewriteMaxMillis(), metrics.packetChunkRewriteSamples());
+        sendTiming(sender, "Chunk update masking", metrics.chunkUpdateMaskAverageMillis(), metrics.chunkUpdateMaskMaxMillis(), metrics.chunkUpdateMaskSamples());
         sendTiming(sender, "Entity scan", metrics.entityScanAverageMillis(), metrics.entityScanMaxMillis(), metrics.entityScanSamples());
         sendTiming(sender, "Queue processing", metrics.queueProcessingAverageMillis(), metrics.queueProcessingMaxMillis(), metrics.queueProcessingSamples());
     }
@@ -417,7 +433,7 @@ final class VeilCommand implements TabExecutor {
                     "badge", infoBadge(),
                     "reveal", metrics.revealScanSamples(),
                     "required_reveal", REQUIRED_REVEAL_PREDICT_SAMPLES,
-                    "chunk_mask", metrics.chunkMaskSamples(),
+                    "chunk_mask", metrics.chunkUpdateMaskSamples(),
                     "required_chunk_mask", REQUIRED_CHUNK_MASK_PREDICT_SAMPLES,
                     "entity", metrics.entityScanSamples(),
                     "required_entity", REQUIRED_ENTITY_PREDICT_SAMPLES,
@@ -465,7 +481,7 @@ final class VeilCommand implements TabExecutor {
         double revealMillis = metrics.revealScanAverageMillis();
         double entityMillis = metrics.entityScanAverageMillis();
         double queueMillis = metrics.queueProcessingAverageMillis();
-        double maskMillis = metrics.chunkMaskAverageMillis();
+        double maskMillis = metrics.chunkUpdateMaskAverageMillis();
 
         double revealActivityFactor = 0.18D;
         double entityActivityFactor = 0.25D;
@@ -502,7 +518,7 @@ final class VeilCommand implements TabExecutor {
 
     private boolean hasEnoughPredictionSamples(VeilMetrics metrics) {
         return metrics.revealScanSamples() >= REQUIRED_REVEAL_PREDICT_SAMPLES
-                && metrics.chunkMaskSamples() >= REQUIRED_CHUNK_MASK_PREDICT_SAMPLES
+                && metrics.chunkUpdateMaskSamples() >= REQUIRED_CHUNK_MASK_PREDICT_SAMPLES
                 && metrics.entityScanSamples() >= REQUIRED_ENTITY_PREDICT_SAMPLES
                 && metrics.queueProcessingSamples() >= REQUIRED_QUEUE_PREDICT_SAMPLES;
     }
@@ -597,7 +613,7 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "Generated", LocalDateTime.now().toString());
         appendLine(report, "Plugin version", plugin.getDescription().getVersion());
         appendLine(report, "Runtime enabled", plugin.veilRuntimeEnabled());
-        appendLine(report, "Runtime disabled reason", plugin.runtimeDisabledReason());
+        appendLine(report, "Runtime disabled reason", plugin.veilRuntimeEnabled() ? "none" : plugin.runtimeDisabledReason());
         appendLine(report, "Debug enabled", plugin.debugEnabled());
 
         appendSection(report, "Server");
@@ -643,6 +659,18 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "entity scan interval millis", settings.entityScanIntervalMillis());
         appendLine(report, "entity scan max entities per player", settings.entityScanMaxEntitiesPerPlayer());
         appendLine(report, "view reveal yaw cache bucket degrees", settings.viewRevealYawCacheBucketDegrees());
+        appendLine(report, "adaptive scan quality enabled", settings.adaptiveScanQualityEnabled());
+        appendLine(report, "adaptive reduce rays below TPS", settings.adaptiveScanReduceBelowTps());
+        appendLine(report, "adaptive minimum front rays", settings.adaptiveScanMinimumFrontHorizontalRays());
+        appendLine(report, "adaptive minimum side rays", settings.adaptiveScanMinimumSideHorizontalRays());
+        appendLine(report, "adaptive minimum back rays", settings.adaptiveScanMinimumBackHorizontalRays());
+        appendLine(report, "adaptive minimum vertical rays", settings.adaptiveScanMinimumVerticalRays());
+
+        appendSection(report, "Packet Protection Config");
+        appendLine(report, "cancel explosions", settings.cancelExplosionsInHiddenZones());
+        appendLine(report, "cancel world events", settings.cancelWorldEventsInHiddenZones());
+        appendLine(report, "cancel block break animations", settings.cancelBlockCrackInHiddenZones());
+        appendLine(report, "cancel positional sounds", settings.cancelPositionalSoundsInHiddenZones());
 
         appendSection(report, "Validation Warnings");
         if (settings.validationWarnings().isEmpty()) {
@@ -664,12 +692,19 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "block entity updates cancelled", metrics.blockEntityUpdatesCancelled());
         appendLine(report, "entity spawns cancelled", metrics.entitySpawnsCancelled());
         appendLine(report, "entity packets cancelled", metrics.entityPacketsCancelled());
+        appendLine(report, "explosion packets cancelled", metrics.explosionPacketsCancelled());
+        appendLine(report, "world event packets cancelled", metrics.worldEventPacketsCancelled());
+        appendLine(report, "block break animation packets cancelled", metrics.blockBreakAnimationPacketsCancelled());
+        appendLine(report, "sound packets cancelled", metrics.soundPacketsCancelled());
         appendLine(report, "reveal scan avg ms", decimal(metrics.revealScanAverageMillis()));
         appendLine(report, "reveal scan max ms", decimal(metrics.revealScanMaxMillis()));
         appendLine(report, "reveal scan samples", metrics.revealScanSamples());
-        appendLine(report, "chunk mask avg ms", decimal(metrics.chunkMaskAverageMillis()));
-        appendLine(report, "chunk mask max ms", decimal(metrics.chunkMaskMaxMillis()));
-        appendLine(report, "chunk mask samples", metrics.chunkMaskSamples());
+        appendLine(report, "packet chunk rewrite avg ms", decimal(metrics.packetChunkRewriteAverageMillis()));
+        appendLine(report, "packet chunk rewrite max ms", decimal(metrics.packetChunkRewriteMaxMillis()));
+        appendLine(report, "packet chunk rewrite samples", metrics.packetChunkRewriteSamples());
+        appendLine(report, "chunk update mask avg ms", decimal(metrics.chunkUpdateMaskAverageMillis()));
+        appendLine(report, "chunk update mask max ms", decimal(metrics.chunkUpdateMaskMaxMillis()));
+        appendLine(report, "chunk update mask samples", metrics.chunkUpdateMaskSamples());
         appendLine(report, "entity scan avg ms", decimal(metrics.entityScanAverageMillis()));
         appendLine(report, "entity scan max ms", decimal(metrics.entityScanMaxMillis()));
         appendLine(report, "entity scan samples", metrics.entityScanSamples());
@@ -854,6 +889,7 @@ final class VeilCommand implements TabExecutor {
             case "report" -> "chunkveil.report";
             case "predict" -> "chunkveil.predict";
             case "debug" -> "chunkveil.debug";
+            case "version" -> "chunkveil.version";
             case "refresh" -> "chunkveil.refresh";
             case "disable", "enable" -> "chunkveil.toggle";
             default -> "chunkveil.admin";

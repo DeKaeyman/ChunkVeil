@@ -81,72 +81,60 @@ Statuses:
 - [x] Cache reveal ray directions per yaw bucket and scan profile.
 - [x] Add `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]`.
 - [x] Use live timing samples in performance predictions when available.
-- [ ] Add optional adaptive scan quality.
-- [ ] Reduce ray counts automatically below a configured TPS threshold.
-
-## Reveal Logic
-
-- [ ] Add reveal mode config.
-- [ ] Keep current behavior as `view` mode.
-- [ ] Add `hybrid` reveal mode.
-- [ ] Add `strict` reveal mode for hidden-base or raiding servers.
-- [ ] Add `distance` reveal mode for low-cost setups.
-- [ ] Add optional re-hide delay.
-- [ ] Add underground entry smoothing for caves, tunnels, and bases.
-- [ ] Add per-world reveal profile overrides.
-
-## Masking Options
-
-- [ ] Add optional per-material replacement rules.
-- [ ] Add replacement profile presets.
-- [ ] Add `light` profile.
-- [ ] Add `balanced` profile.
-- [ ] Add `strict` profile.
-- [ ] Add `base-protection` profile.
-- [ ] Replace single `hide-entities` option with category support while keeping backward compatibility.
-- [ ] Add entity category for mobs.
-- [ ] Add entity category for item drops.
-- [ ] Add entity category for minecarts.
-- [ ] Add entity category for armor stands.
-- [ ] Add entity category for item frames.
-- [ ] Add entity category for projectiles.
-- [ ] Add entity category for players.
-- [ ] Add explicit `hide-fluids` option.
+- [x] Add optional adaptive scan quality.
+- [x] Reduce ray counts automatically below a configured TPS threshold.
 
 ## Compatibility And Safety
 
-- [~] Enforce fail-closed behavior for known startup and runtime packet rewrite failures.
-- [ ] Add stronger startup self-test where possible.
-- [ ] Check ProtocolLib version at startup.
-- [ ] Check supported server version range at startup.
-- [ ] Check required chunk packet wrappers at startup.
-- [ ] Check chunk packet coordinate access at startup if possible.
-- [ ] Check chunk data buffer access at startup if possible.
-- [ ] Keep runtime fail-closed for incompatibilities that only appear on real packets.
-- [ ] Add compatibility test matrix in CI.
-- [ ] Test Paper 1.21.8.
-- [ ] Test Paper 1.21.11.
-- [ ] Test Paper 26.1.x only if raw chunk rewrite support is restored or explicitly supported.
-- [ ] Test Java 21.
-- [ ] Test Java 25 only for supported Paper 26.1 builds.
+- [x] Enforce fail-closed behavior for known startup and runtime packet rewrite failures.
+- [x] Add stronger startup self-test where possible.
+- [x] Warn when the installed ProtocolLib build is not known to support the current Minecraft/Paper version.
+- [x] Check supported server version range at startup.
+- [x] Check required chunk packet wrappers at startup.
+- [x] Check chunk packet coordinate access at startup if possible.
+- [x] Check chunk data buffer access at startup if possible.
+- [x] Keep runtime fail-closed for incompatibilities that only appear on real packets.
+- [x] Add compatibility test matrix in CI.
+- [x] Test Paper 1.21.11.
+- [x] Test Java 21.
+- [x] Test Paper 1.21.8 before claiming broader 1.21.x support.
 
 ## Leak Hardening
 
-- [ ] Audit packet coverage for block changes.
-- [ ] Audit packet coverage for multi-block changes.
-- [ ] Audit packet coverage for block entity data.
-- [ ] Audit packet coverage for entity spawn packets.
-- [ ] Audit packet coverage for entity follow-up packets.
-- [ ] Audit packet coverage for sounds/events that could expose hidden underground entities or blocks.
-- [ ] Audit explosion-related behavior.
-- [ ] Audit fluid update behavior.
-- [ ] Improve refresh behavior around `/chunkveil reload`.
-- [ ] Improve refresh behavior around `/chunkveil disable`.
-- [ ] Improve refresh behavior around `/chunkveil enable`.
-- [ ] Improve refresh behavior around world changes.
-- [ ] Improve refresh behavior around teleports.
-- [ ] Improve refresh behavior around render distance changes.
-- [ ] Refresh players when `chunkveil.bypass` changes, if detectable.
+- [x] Audit packet coverage for block changes.
+- [x] Audit packet coverage for multi-block changes.
+- [x] Audit packet coverage for block entity data.
+- [x] Audit packet coverage for entity spawn packets.
+- [x] Audit packet coverage for entity follow-up packets.
+- [x] Audit packet coverage for fluid updates.
+- [x] Cancel explosion packets (`EXPLOSION`) when the center is in a hidden underground zone.
+- [x] Cancel world event packets (`WORLD_EVENT`) at hidden underground positions.
+- [x] Cancel block break animation packets (`BLOCK_BREAK_ANIMATION`) at hidden underground positions.
+- [x] Cancel positional sound packets at hidden underground positions.
+  - [x] Cancel entity sounds for hidden entities (`ENTITY_SOUND`).
+  - [x] Cancel `SOUND_EFFECT` and `NAMED_SOUND_EFFECT` when originating from a hidden underground position.
+- [x] Improve refresh behavior around `/chunkveil reload`.
+- [x] Improve refresh behavior around `/chunkveil disable`.
+- [x] Improve refresh behavior around `/chunkveil enable`.
+- [x] Improve refresh behavior around world changes.
+- [x] Improve refresh behavior around teleports.
+- [x] Improve refresh behavior around render distance changes.
+- [x] Refresh players when `chunkveil.bypass` changes, if detectable.
+
+## Bug Fixes
+
+- [x] Fix: sub-16 hidden range triggers fail-closed. `ChunkPacketBlockRewriter` now handles partial hidden sections.
+- [x] Fix: non-16-aligned `hideBelowY` exposes partial top section briefly. Partial top sections are rewritten before the MAP_CHUNK packet is sent.
+- [x] Fix: `writeAirAwarePalette` hardcoded `new long[256]`. Packet rewrite now derives packed array sizing from the active bits-per-entry and section size.
+- [ ] Fix/verify: `cancelHiddenPositionalSound` reads sound position from `getIntegers()` indices 0/1/2, assuming ProtocolLib exposes sound identifier and category via typed modifiers leaving x/y/z as the first integers. Confirm this holds for both `CUSTOM_SOUND_EFFECT` and `NAMED_SOUND_EFFECT` on the supported server versions. Failure mode is silent (sounds not cancelled), not a crash.
+
+## Code Quality
+
+- [x] Remove dead code: `VeilWorldSettings.hiddenSectionCount()` and its wrapper `VeilSettings.hiddenSectionCount(World)` are never called.
+- [x] Add a `canUse()` permission guard to the `version` subcommand in `VeilCommand`.
+- [x] Reset `VeilMetrics` on `reloadVeil()` so that `/chunkveil predict` uses timing samples from the current config, not a previous one.
+- [x] Split `chunkMaskTiming` into two separate metrics: one for netty-thread binary packet rewriting (`ProtocolChunkListener`) and one for main-thread multi-block sending (`VeilEngine.sendChunkMode`).
+- [ ] Migrate `VeilLang` from deprecated `ChatColor.translateAlternateColorCodes` to the Adventure/MiniMessage API (Paper 1.21+ preferred path).
 
 ## Documentation And Marketplace
 
@@ -159,12 +147,3 @@ Statuses:
 - [ ] Add recommended ProtocolLib version notes per supported Minecraft/Paper version.
 - [ ] Add release checklist to docs.
 - [ ] Add screenshots or logs showing fail-closed behavior.
-
-## Not Planned
-
-- [ ] Do not add bans, alerts, punishments, or cheat detection.
-- [ ] Do not add combat anti-cheat checks.
-- [ ] Do not add movement anti-cheat checks.
-- [ ] Do not add claims, factions, land protection, or economy systems.
-- [ ] Do not add Spigot-first support if it weakens Paper reliability.
-- [ ] Do not add Folia support until the scheduler/state model is redesigned for region threading.

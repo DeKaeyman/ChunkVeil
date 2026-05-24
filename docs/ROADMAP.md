@@ -286,76 +286,6 @@ Why it matters:
 
 The Nether, End, custom worlds, and overworld caves have different shapes and performance needs.
 
-## 0.6.x - Better Masking Options
-
-Goal: let admins hide more types of underground information without making the default setup heavy.
-
-### Replacement Rules
-
-Add optional per-material replacement rules.
-
-Example:
-
-```yaml
-worlds:
-  world:
-    replacements:
-      DIAMOND_ORE: DEEPSLATE
-      CHEST: DEEPSLATE
-      BARREL: DEEPSLATE
-      SPAWNER: DEEPSLATE
-```
-
-Why it matters:
-
-Admins may want containers, spawners, or special blocks handled differently from normal stone.
-
-### Replacement Profiles
-
-Add presets:
-
-- `light`: hide valuable solid blocks, keep air visible.
-- `balanced`: recommended default.
-- `strict`: hide air and underground shapes more aggressively.
-- `base-protection`: stronger protection for hidden rooms, storage, and entities.
-
-Why it matters:
-
-Most admins prefer choosing a profile over tuning many settings manually.
-
-### Entity Categories
-
-Replace the single `hide-entities` option with optional categories while keeping backward compatibility.
-
-Categories:
-
-- mobs.
-- item drops.
-- minecarts.
-- armor stands.
-- item frames.
-- projectiles.
-- players.
-
-Why it matters:
-
-Some servers want to hide mobs and minecarts but never players. Others want stronger base protection.
-
-### Fluid And Cave Shape Controls
-
-Add explicit handling for underground air and fluids.
-
-Useful options:
-
-```yaml
-hide-air: false
-hide-fluids: false
-```
-
-Why it matters:
-
-Air and fluids reveal cave shapes, farms, and base layouts. They are also expensive to rewrite, so admins need clear control.
-
 ## 0.7.x - Version Compatibility And Fail-Closed Startup
 
 Goal: make future Minecraft/Paper support explicit, testable, and safe.
@@ -420,11 +350,9 @@ Add CI/build checks for supported targets.
 
 Recommended matrix:
 
-- Paper 1.21.8.
 - Paper 1.21.11.
-- Paper 26.1.x.
 - Java 21.
-- Java 25 for Paper 26.1 builds.
+- Paper 1.21.8 only before claiming broader 1.21.x support.
 
 Why it matters:
 
@@ -558,7 +486,11 @@ Suggested short summaries:
 
 Best honest positioning:
 
-ChunkVeil reduces underground information leaks. It does not claim to block every hacked client, replace a full anti-cheat, or make xray impossible in every situation.
+For block-level xray and ESP, ChunkVeil provides strong protection because real underground chunk data never reaches the client. Cheat clients cannot reverse-engineer hidden block data they were never sent — this is fundamentally different from obfuscation-based approaches that can be cracked by pattern analysis.
+
+ChunkVeil does not replace a full anti-cheat system, detect movement or combat cheats, or claim to prevent every possible information leak. With `hide-air: false` (the default), cave and tunnel layouts are still visible to the client even though block types are hidden. Enabling `hide-air: true` closes this completely at the cost of extra per-chunk work.
+
+The remaining secondary leak surface (ambient/block sounds, positional sound packets) is much harder to exploit in practice and is being progressively closed.
 
 ## Not Planned
 

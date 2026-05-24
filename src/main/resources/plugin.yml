@@ -26,6 +26,7 @@ permissions:
       chunkveil.refresh: true
       chunkveil.toggle: true
       chunkveil.debug: true
+      chunkveil.version: true
   chunkveil.status:
     description: Allows checking ChunkVeil status.
     default: op
@@ -52,6 +53,9 @@ permissions:
     default: op
   chunkveil.debug:
     description: Allows toggling ChunkVeil debug mode.
+    default: op
+  chunkveil.version:
+    description: Allows checking the ChunkVeil version.
     default: op
   chunkveil.bypass:
     description: Bypasses all ChunkVeil hiding for the player.
