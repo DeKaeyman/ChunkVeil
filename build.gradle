@@ -6,10 +6,8 @@ plugins {
 group = 'com.dekaeyman'
 version = '0.2.3'
 
-def paper121MinecraftVersion = "1.21.11"
-def paper121ApiVersion = "1.21.11-R0.1-SNAPSHOT"
-def paper261MinecraftVersion = "26.1.2"
-def paper261ApiVersion = "26.1.2.build.65-stable"
+def paperMinecraftVersion = "1.21.11"
+def paperApiVersion = "1.21.11-R0.1-SNAPSHOT"
 def protocolLibVersion = "5.4.0"
 
 repositories {
@@ -20,53 +18,14 @@ repositories {
     }
 }
 
-sourceSets {
-    paper261 {
-        java.srcDirs = sourceSets.main.java.srcDirs
-        resources.srcDirs = sourceSets.main.resources.srcDirs
-    }
-}
-
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:${paper121ApiVersion}")
+    compileOnly("io.papermc.paper:paper-api:${paperApiVersion}")
     compileOnly("net.dmulloy2:ProtocolLib:${protocolLibVersion}")
-    paper261CompileOnly("io.papermc.paper:paper-api:${paper261ApiVersion}")
-    paper261CompileOnly("net.dmulloy2:ProtocolLib:${protocolLibVersion}")
 }
 
 tasks.named("runServer") {
-    minecraftVersion(paper121MinecraftVersion)
+    minecraftVersion(paperMinecraftVersion)
     pluginJars(tasks.named("jar").flatMap { it.archiveFile })
-}
-
-tasks.named("jar") {
-    archiveClassifier.set("paper-1.21")
-}
-
-tasks.register("paper261Jar", Jar) {
-    group = "build"
-    description = "Builds the Paper 26.1.x variant jar."
-    archiveBaseName.set(project.name)
-    archiveVersion.set(project.version.toString())
-    archiveClassifier.set("paper-26.1")
-    from(sourceSets.paper261.output)
-}
-
-tasks.register("buildReleaseVariants") {
-    group = "build"
-    description = "Builds all release jars."
-    dependsOn(tasks.named("jar"), tasks.named("paper261Jar"))
-}
-
-tasks.register("runPaper261", xyz.jpenilla.runpaper.task.RunServer) {
-    group = "run paper"
-    description = "Run a Paper 26.1.x server for plugin testing."
-    minecraftVersion(paper261MinecraftVersion)
-    runDirectory.set(layout.projectDirectory.dir("run/26.1"))
-    pluginJars(tasks.named("paper261Jar").flatMap { it.archiveFile })
-    javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
-    })
 }
 
 def targetJavaVersion = 21
@@ -87,23 +46,7 @@ tasks.withType(JavaCompile).configureEach {
     }
 }
 
-tasks.named("compilePaper261Java", JavaCompile) {
-    javaCompiler.set(javaToolchains.compilerFor {
-        languageVersion = JavaLanguageVersion.of(25)
-    })
-    options.release.set(25)
-}
-
 processResources {
-    def props = [version: version]
-    inputs.properties props
-    filteringCharset 'UTF-8'
-    filesMatching('plugin.yml') {
-        expand props
-    }
-}
-
-tasks.named("processPaper261Resources") {
     def props = [version: version]
     inputs.properties props
     filteringCharset 'UTF-8'
