@@ -32,7 +32,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 
 ![Requirements](https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-2.png)
 
-- Paper 1.21.x
+- Paper 1.21.x or 26.x
 - Java 21
 - ProtocolLib compatible with your Paper/Minecraft version
 
@@ -40,7 +40,7 @@ ProtocolLib version matters. Use the ProtocolLib build recommended for your serv
 
 https://www.spigotmc.org/resources/protocollib.1997/
 
-ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
+ChunkVeil is tested on Paper 1.21.11 and Paper 26.1.2. Other Paper 1.21.x and 26.x builds are expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
 
 ## How It Works
 

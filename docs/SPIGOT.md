@@ -38,7 +38,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 [CENTER][IMG]https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-2.png[/IMG][/CENTER]
 
 [LIST]
-[*][B]Paper[/B] 1.21.x
+[*][B]Paper[/B] 1.21.x or 26.x
 [*][B]Java[/B] 21
 [*][B]ProtocolLib[/B] compatible with your Paper/Minecraft version
 [/LIST]
@@ -48,7 +48,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 ProtocolLib:
 [URL]https://www.spigotmc.org/resources/protocollib.1997/[/URL]
 
-ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
+ChunkVeil is tested on Paper 1.21.11 and Paper 26.1.2. Other Paper 1.21.x and 26.x builds are expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
 
 [SIZE=5][B]How It Works[/B][/SIZE]
 
