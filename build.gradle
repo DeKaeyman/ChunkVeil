@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.dekaeyman'
-version = '0.2.3'
+version = '0.3.0'
 
 def paperMinecraftVersion = "1.21.11"
 def paperApiVersion = "1.21.11-R0.1-SNAPSHOT"
