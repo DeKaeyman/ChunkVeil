@@ -29,6 +29,7 @@ final class ProtocolChunkListener {
     private final VeilMetrics metrics;
     private final VeilSettings settings;
     private final boolean chunkPacketRewriteSupported;
+    private final boolean sectionBlockCountIsLeInt;
     private final AtomicBoolean chunkDataWrappersBroken = new AtomicBoolean();
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean multiBlockChangeRewriteBroken = new AtomicBoolean();
@@ -43,6 +44,7 @@ final class ProtocolChunkListener {
         this.metrics = metrics;
         this.settings = settings;
         this.chunkPacketRewriteSupported = supportsChunkPacketRewrite();
+        this.sectionBlockCountIsLeInt = sectionBlockCountIsLeInt();
     }
 
     static ProtocolChunkListener start(ChunkVeilPlugin plugin, VeilEngine veilEngine, VeilSettings settings, VeilMetrics metrics) {
@@ -174,8 +176,17 @@ final class ProtocolChunkListener {
     }
 
     private boolean supportsChunkPacketRewrite() {
-        String minecraftVersion = Bukkit.getMinecraftVersion();
-        return minecraftVersion == null || !minecraftVersion.startsWith("26.");
+        return true;
+    }
+
+    private static boolean sectionBlockCountIsLeInt() {
+        String v = Bukkit.getMinecraftVersion();
+        if (v == null) return false;
+        try {
+            return Integer.parseInt(v.split("\\.")[0]) >= 26;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private List<PacketType> supportedServerPackets() {
@@ -657,7 +668,7 @@ final class ProtocolChunkListener {
     private ChunkPacketBlockRewriter rewriterFor(Material fakeBlock) {
         return blockRewriters.computeIfAbsent(fakeBlock, material -> {
             int fakeBlockStateId = NmsBlockStateIds.defaultStateId(material);
-            return new ChunkPacketBlockRewriter(fakeBlockStateId, airBlockStateId);
+            return new ChunkPacketBlockRewriter(fakeBlockStateId, airBlockStateId, sectionBlockCountIsLeInt);
         });
     }
 

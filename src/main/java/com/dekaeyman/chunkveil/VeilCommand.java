@@ -579,9 +579,6 @@ final class VeilCommand implements TabExecutor {
         if (!plugin.packetRewriteActive()) {
             warnings.add("Raw chunk packet rewrite is not active. Install a ProtocolLib build for this exact server version.");
         }
-        if (Bukkit.getMinecraftVersion().startsWith("26.")) {
-            warnings.add("Minecraft 26.x is not currently supported by the raw chunk rewrite path.");
-        }
         warnings.addAll(settings.validationWarnings());
         return warnings;
     }

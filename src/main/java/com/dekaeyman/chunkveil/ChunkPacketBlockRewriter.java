@@ -14,10 +14,12 @@ final class ChunkPacketBlockRewriter {
 
     private final int fakeBlockStateId;
     private final int airBlockStateId;
+    private final boolean sectionBlockCountIsLeInt;
 
-    ChunkPacketBlockRewriter(int fakeBlockStateId, int airBlockStateId) {
+    ChunkPacketBlockRewriter(int fakeBlockStateId, int airBlockStateId, boolean sectionBlockCountIsLeInt) {
         this.fakeBlockStateId = fakeBlockStateId;
         this.airBlockStateId = airBlockStateId;
+        this.sectionBlockCountIsLeInt = sectionBlockCountIsLeInt;
     }
 
     int rewriteHiddenSections(PacketEvent event, World world, int hideBelowY, boolean hideAir) {
@@ -45,18 +47,26 @@ final class ChunkPacketBlockRewriter {
             int sectionMinY = sectionY * 16;
             boolean hiddenSection = sectionMinY < hideBelowY;
 
-            int nonEmptyBlockCount = reader.readUnsignedShort();
+            int nonEmptyBlockCount = sectionBlockCountIsLeInt ? reader.readLittleEndianInt() : reader.readUnsignedShort();
             PalettedContainer blockContainer = reader.readPalettedContainer(8, BLOCKS_PER_SECTION);
             byte[] biomeContainer = reader.readPalettedContainerBytes(3, 64);
 
             if (hiddenSection) {
                 handledHiddenSections++;
                 RewrittenSection rewrittenSection = rewriteSection(blockContainer, sectionMinY, hideBelowY, hideAir);
-                writeShort(output, rewrittenSection.nonEmptyBlockCount());
+                if (sectionBlockCountIsLeInt) {
+                    writeLittleEndianInt(output, rewrittenSection.nonEmptyBlockCount());
+                } else {
+                    writeShort(output, rewrittenSection.nonEmptyBlockCount());
+                }
                 output.writeBytes(rewrittenSection.bytes());
                 rewrittenSections++;
             } else {
-                writeShort(output, nonEmptyBlockCount);
+                if (sectionBlockCountIsLeInt) {
+                    writeLittleEndianInt(output, nonEmptyBlockCount);
+                } else {
+                    writeShort(output, nonEmptyBlockCount);
+                }
                 output.writeBytes(blockContainer.bytes());
             }
             output.writeBytes(biomeContainer);
@@ -165,6 +175,13 @@ final class ChunkPacketBlockRewriter {
         output.write(value & 0xFF);
     }
 
+    private static void writeLittleEndianInt(ByteArrayOutputStream output, int value) {
+        output.write(value & 0xFF);
+        output.write((value >>> 8) & 0xFF);
+        output.write((value >>> 16) & 0xFF);
+        output.write((value >>> 24) & 0xFF);
+    }
+
     private static void writeVarInt(ByteArrayOutputStream output, int value) {
         while ((value & 0xFFFFFF80) != 0) {
             output.write((value & 0x7F) | 0x80);
@@ -223,6 +240,16 @@ final class ChunkPacketBlockRewriter {
             require(2);
             int value = ((data[index] & 0xFF) << 8) | (data[index + 1] & 0xFF);
             index += 2;
+            return value;
+        }
+
+        int readLittleEndianInt() {
+            require(4);
+            int value = (data[index] & 0xFF)
+                    | ((data[index + 1] & 0xFF) << 8)
+                    | ((data[index + 2] & 0xFF) << 16)
+                    | ((data[index + 3] & 0xFF) << 24);
+            index += 4;
             return value;
         }
 
