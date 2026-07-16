@@ -18,7 +18,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "predict", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version");
     private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final long REQUIRED_REVEAL_PREDICT_SAMPLES = 30L;
     private static final long REQUIRED_CHUNK_MASK_PREDICT_SAMPLES = 5L;
@@ -45,6 +45,7 @@ final class VeilCommand implements TabExecutor {
             case "inspect" -> inspect(sender, args);
             case "report" -> report(sender);
             case "predict" -> predict(sender, args);
+            case "update" -> update(sender);
             case "reload" -> reload(sender);
             case "refresh" -> refresh(sender);
             case "disable", "off" -> disable(sender);
@@ -67,6 +68,22 @@ final class VeilCommand implements TabExecutor {
         sender.sendMessage(lang().message("commands.version", Map.of(
                 "version", plugin.getDescription().getVersion()
         )));
+    }
+
+    private void update(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.update")) {
+            deny(sender);
+            return;
+        }
+
+        UpdateChecker updateChecker = plugin.updateChecker();
+        if (updateChecker == null || !updateChecker.enabled()) {
+            sender.sendMessage(lang().message("commands.update.disabled"));
+            return;
+        }
+
+        sender.sendMessage(lang().message("commands.update.checking"));
+        updateChecker.checkNow(sender);
     }
 
     @Override
@@ -885,6 +902,7 @@ final class VeilCommand implements TabExecutor {
             case "inspect" -> "chunkveil.inspect";
             case "report" -> "chunkveil.report";
             case "predict" -> "chunkveil.predict";
+            case "update" -> "chunkveil.update";
             case "debug" -> "chunkveil.debug";
             case "version" -> "chunkveil.version";
             case "refresh" -> "chunkveil.refresh";

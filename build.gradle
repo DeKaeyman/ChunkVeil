@@ -1,10 +1,11 @@
 plugins {
     id 'java'
+    id 'com.gradleup.shadow' version '8.3.6'
     id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
 group = 'com.dekaeyman'
-version = '0.3.0'
+version = '0.4.0'
 
 def paperMinecraftVersion = "1.21.11"
 def paperApiVersion = "1.21.11-R0.1-SNAPSHOT"
@@ -21,11 +22,28 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:${paperApiVersion}")
     compileOnly("net.dmulloy2:ProtocolLib:${protocolLibVersion}")
+    implementation("org.bstats:bstats-bukkit:3.1.0")
+}
+
+// The distributed jar is the shaded jar: bStats is bundled and relocated so
+// it cannot clash with other plugins that also ship bStats.
+tasks.named("shadowJar") {
+    archiveClassifier = ''
+    relocate 'org.bstats', 'com.dekaeyman.chunkveil.libs.bstats'
+}
+
+tasks.named("jar") {
+    // Replaced by shadowJar, which produces the same archive name without a classifier.
+    enabled = false
+}
+
+tasks.named("build") {
+    dependsOn tasks.named("shadowJar")
 }
 
 tasks.named("runServer") {
     minecraftVersion(paperMinecraftVersion)
-    pluginJars(tasks.named("jar").flatMap { it.archiveFile })
+    pluginJars(tasks.named("shadowJar").flatMap { it.archiveFile })
 }
 
 def targetJavaVersion = 21

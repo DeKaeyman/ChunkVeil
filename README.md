@@ -46,6 +46,8 @@ ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and 
 - Cancels hidden block entity update packets below the hidden Y range.
 - Optionally hides underground entities.
 - Includes admin commands, permissions, metrics, debug logging, reload/refresh, and emergency runtime disable.
+- Notifies admins in-game when a newer release compatible with the server's Minecraft version is available.
+- Reports anonymous aggregate usage statistics through bStats (opt-out).
 
 ## How It Works
 
@@ -182,6 +184,9 @@ Logs a compact metrics summary every 30 seconds.
 `/chunkveil debug off`
 Disables debug summaries.
 
+`/chunkveil update`
+Checks the update manifest now and reports whether a newer compatible release exists.
+
 `/chunkveil version`
 Shows the plugin version.
 
@@ -195,7 +200,20 @@ Alias: `/cv`
 - `chunkveil.refresh` - Allows `/chunkveil refresh`.
 - `chunkveil.toggle` - Allows `/chunkveil disable` and `/chunkveil enable`.
 - `chunkveil.debug` - Allows `/chunkveil debug on/off`.
+- `chunkveil.update` - Allows `/chunkveil update` and receives update notices on join.
 - `chunkveil.bypass` - Bypasses all ChunkVeil hiding for that player.
+
+## Update Checker
+
+ChunkVeil periodically reads a small version manifest ([update.json](update.json)) from this repository and reports newer releases that declare compatibility with the server's exact Minecraft version. Incompatible releases are never offered. Admins with `chunkveil.update` get a clickable download link on join, and `/chunkveil update` checks on demand.
+
+The checker only reads version metadata. It never downloads or installs anything, and it never affects the protection runtime. Disable it with `update-checker.enabled: false` in `config.yml`. See [docs/UPDATE-MANIFEST.md](docs/UPDATE-MANIFEST.md) for the manifest format.
+
+## Usage Statistics
+
+ChunkVeil reports anonymous aggregate usage statistics through [bStats](https://bstats.org): server count, player counts, Minecraft/Java versions, and a few ChunkVeil-specific charts such as hide-air posture. No world data, no player data, and no server address is ever sent.
+
+Opt out with `metrics.enabled: false` in `config.yml`, or globally for all plugins in `plugins/bStats/config.yml`.
 
 ## Performance Notes
 

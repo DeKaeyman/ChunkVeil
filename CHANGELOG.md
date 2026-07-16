@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+Update notifications and usage statistics.
+
+- Added an in-game update checker driven by a hosted version manifest (`update.json`). Updates are only offered when a release declares compatibility with the server's exact Minecraft version. Admins with `chunkveil.update` get a clickable notice on join, and `/chunkveil update` checks on demand.
+- Added anonymous aggregate usage statistics through bStats with ChunkVeil-specific charts (opt-out via `metrics.enabled: false` or the global bStats config). bStats is shaded and relocated into the plugin jar.
+- The distributed jar is now built with `shadowJar` instead of `jar`.
+
 ## 0.2.2
 
 Release packaging fix.

@@ -31,6 +31,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 [*][B]Adaptive scan quality[/B] - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 [*][B]Fail-closed safety[/B] - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables runtime protection instead of pretending it is safe.
 [*][B]Admin tools[/B] - Status, compatibility diagnostics, player inspect, diagnostic reports, performance prediction, reload, refresh, debug metrics, permissions, and emergency runtime disable.
+[*][B]Update notifications[/B] - Admins get an in-game notice with a download link when a newer release compatible with the server's exact Minecraft version is available.
 [/LIST]
 
 [SIZE=5][B]Requirements[/B][/SIZE]
@@ -136,6 +137,7 @@ For the strictest protection, test your exact plugin stack with /chunkveil statu
 [*][B]/chunkveil inspect <player>[/B] - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
 [*][B]/chunkveil report[/B] - Creates a diagnostic report file for troubleshooting.
 [*][B]/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance][/B] - Estimates performance from live timing samples.
+[*][B]/chunkveil update[/B] - Checks now whether a newer compatible release is available.
 [*][B]/chunkveil reload[/B] - Reloads config and language files.
 [*][B]/chunkveil refresh[/B] - Forces a rescan and refresh for online players.
 [*][B]/chunkveil disable[/B] - Emergency switch that restores real chunks for online players.
@@ -155,6 +157,7 @@ Alias: [B]/cv[/B]
 [*][B]chunkveil.inspect[/B]
 [*][B]chunkveil.report[/B]
 [*][B]chunkveil.predict[/B]
+[*][B]chunkveil.update[/B]
 [*][B]chunkveil.reload[/B]
 [*][B]chunkveil.refresh[/B]
 [*][B]chunkveil.toggle[/B]
@@ -177,6 +180,20 @@ Alias: [B]/cv[/B]
 [*]Test [B]/chunkveil disable[/B] to restore real chunks for online players.
 [*]Use [B]/chunkveil debug on[/B] while testing.
 [/LIST]
+
+[SIZE=5][B]Update Notifications[/B][/SIZE]
+
+ChunkVeil periodically checks a small version manifest on GitHub and tells admins (permission [B]chunkveil.update[/B]) when a newer release is available [B]for their exact Minecraft version[/B]. Releases that do not declare compatibility with the running server version are never offered.
+
+The checker only reads version metadata. It never downloads or installs anything. Disable it with [B]update-checker.enabled: false[/B] in config.yml.
+
+[SIZE=5][B]Anonymous Usage Statistics[/B][/SIZE]
+
+ChunkVeil uses [URL='https://bstats.org/plugin/bukkit/ChunkVeil/32677']bStats[/URL] to collect anonymous aggregate usage statistics: server count, player counts, Minecraft/Java versions, and a few ChunkVeil-specific charts such as hide-air usage. No world data, no player data, and no server address is ever sent.
+
+Opt out with [B]metrics.enabled: false[/B] in config.yml, or globally for all plugins in plugins/bStats/config.yml.
+
+[CENTER][IMG]https://bstats.org/signatures/bukkit/ChunkVeil.svg[/IMG][/CENTER]
 
 [SIZE=5][B]Links[/B][/SIZE]
 

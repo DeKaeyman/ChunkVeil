@@ -26,6 +26,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
 - **Fail-closed startup/runtime** - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables protection instead of pretending it is safe.
 - **Admin tools** - Includes status, compatibility diagnostics, player inspect, diagnostic reports, performance prediction, reload, refresh, debug metrics, permissions, and emergency disable.
+- **Update notifications** - Admins get an in-game notice with a download link when a newer release compatible with the server's exact Minecraft version is available.
 - **Open source** - MIT licensed and easy to audit.
 
 ## Requirements
@@ -116,6 +117,7 @@ worlds:
 - `/chunkveil inspect <player>` - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
 - `/chunkveil report` - Creates a diagnostic report file for troubleshooting.
 - `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Estimates performance from live timing samples.
+- `/chunkveil update` - Checks now whether a newer compatible release is available.
 - `/chunkveil reload` - Reloads config and language files.
 - `/chunkveil refresh` - Forces a rescan and refresh for online players.
 - `/chunkveil disable` - Emergency switch that restores real chunks for online players.
@@ -133,6 +135,7 @@ Alias: `/cv`
 - `chunkveil.inspect`
 - `chunkveil.report`
 - `chunkveil.predict`
+- `chunkveil.update`
 - `chunkveil.reload`
 - `chunkveil.refresh`
 - `chunkveil.toggle`
@@ -152,6 +155,20 @@ Alias: `/cv`
 8. Test `/chunkveil refresh`.
 9. Test `/chunkveil disable` to restore real chunks for online players.
 10. Use `/chunkveil debug on` while testing.
+
+## Update Notifications
+
+ChunkVeil periodically checks a small version manifest on GitHub and tells admins (permission `chunkveil.update`) when a newer release is available **for their exact Minecraft version**. Releases that do not declare compatibility with the running server version are never offered.
+
+The checker only reads version metadata. It never downloads or installs anything. Disable it with `update-checker.enabled: false` in `config.yml`.
+
+## Anonymous Usage Statistics
+
+ChunkVeil uses [bStats](https://bstats.org/plugin/bukkit/ChunkVeil/32677) to collect anonymous aggregate usage statistics: server count, player counts, Minecraft/Java versions, and a few ChunkVeil-specific charts such as hide-air usage. No world data, no player data, and no server address is ever sent.
+
+Opt out with `metrics.enabled: false` in `config.yml`, or globally for all plugins in `plugins/bStats/config.yml`.
+
+![ChunkVeil usage statistics](https://bstats.org/signatures/bukkit/ChunkVeil.svg)
 
 ## Bug Reports
 

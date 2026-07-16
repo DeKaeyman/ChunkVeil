@@ -22,6 +22,7 @@ commands:
     inspect: "/{label} inspect <player>"
     report: "/{label} report"
     predict: "/{label} predict <players> <ramGb> <cpuTier> [viewDistance]"
+    update: "/{label} update"
     reload: "/{label} reload"
     refresh: "/{label} refresh"
     disable: "/{label} disable"
@@ -112,6 +113,16 @@ commands:
     memory: "{badge} &7RAM headroom: &f{memory}"
     confidence: "{badge} &7Confidence: &f{confidence}"
     recommendation: "{badge} &7Recommendation: &f{recommendation}"
+
+  update:
+    checking: "Checking for updates..."
+    disabled: "The update checker is disabled in config.yml."
+    up-to-date: "You are running the latest version (&f{version}&7) for Minecraft &f{mc}&7."
+    available: "&eUpdate available: &f{latest}&7 (current: &f{current}&7) for Minecraft &f{mc}&7."
+    notes: "Notes: &f{notes}"
+    link: "&bDownload: &f&n{url}"
+    link-hover: "&7Click to open the download page"
+    failed: "&cUpdate check failed: {reason}"
 
   reload: "Reloaded config and language, then refreshed online players."
   refresh: "Refreshed &f{players}&7 online players."

@@ -1,0 +1,26 @@
+{
+  "releases": [
+    {
+      "version": "0.4.0",
+      "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v0.4.0",
+      "severity": "recommended",
+      "prerelease": false,
+      "mc": [
+        { "min": "1.21", "max": "1.21" },
+        { "min": "26.0", "max": "26.1" }
+      ],
+      "notes": "Adds in-game update notifications and anonymous usage statistics."
+    },
+    {
+      "version": "0.3.0",
+      "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v0.3.0",
+      "severity": "recommended",
+      "prerelease": false,
+      "mc": [
+        { "min": "1.21", "max": "1.21" },
+        { "min": "26.0", "max": "26.1" }
+      ],
+      "notes": "Single universal jar for Minecraft 1.21.x and 26.x."
+    }
+  ]
+}

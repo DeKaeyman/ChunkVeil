@@ -182,3 +182,48 @@ packet-protection:
   # crackling, etc.) when the sound source is inside a hidden underground
   # position. Prevents activity inference from block sounds alone.
   cancel-positional-sounds: true
+
+
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  UPDATE CHECKER                                                      │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# Periodically reads a small version manifest on GitHub and reports newer
+# ChunkVeil releases that declare compatibility with this server's exact
+# Minecraft version. Admins with the chunkveil.update permission get a
+# clickable chat notice on join, and /chunkveil update checks on demand.
+#
+# The checker only reads version metadata. It never downloads or installs
+# anything, runs off the main thread, and never affects the protection
+# runtime.
+
+update-checker:
+  enabled: true
+
+  # Hours between automatic checks. The first check runs shortly after
+  # startup.
+  interval-hours: 6
+
+  # Send the in-game notice to admins on join. Console is always informed.
+  notify-in-game: true
+
+  # Also offer pre-release versions (e.g. 0.4.0-rc.1).
+  include-prereleases: false
+
+  # Manifest describing releases and their supported Minecraft versions.
+  manifest-url: "https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/update.json"
+
+
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │  METRICS (bStats)                                                    │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# Anonymous aggregate usage statistics via bstats.org: server count,
+# player counts, Minecraft/Java versions, and a few ChunkVeil-specific
+# charts (hide-air posture, enabled world count, packet rewrite state).
+#
+# No world data, no player data, and no server address is ever sent.
+# You can also opt out of bStats globally in plugins/bStats/config.yml.
+
+metrics:
+  enabled: true

@@ -8,9 +8,12 @@ import org.bukkit.scheduler.BukkitTask;
 public final class ChunkVeilPlugin extends JavaPlugin {
     private VeilEngine veilEngine;
     private ProtocolChunkListener protocolChunkListener;
+    private VeilListener veilListener;
     private VeilSettings settings;
     private VeilLang lang;
     private VeilMetrics metrics;
+    private UpdateChecker updateChecker;
+    private VeilTelemetry telemetry;
     private boolean debugEnabled;
     private boolean veilRuntimeEnabled;
     private String runtimeDisabledReason;
@@ -24,10 +27,18 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
         registerCommand();
         startVeil();
+
+        // The update checker and telemetry live outside the veil runtime so a
+        // fail-closed shutdown or /chunkveil disable never affects them.
+        getServer().getPluginManager().registerEvents(new UpdateNotifyListener(this), this);
+        this.updateChecker = UpdateChecker.start(this);
+        this.telemetry = VeilTelemetry.start(this);
     }
 
     @Override
     public void onDisable() {
+        stopUpdateChecker();
+        stopTelemetry();
         stopVeil();
     }
 
@@ -36,11 +47,15 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         if (veilEngine != null) {
             veilEngine.restoreAllPlayersToRealChunks();
         }
+        stopUpdateChecker();
+        stopTelemetry();
         stopVeil();
         reloadConfig();
         this.lang = VeilLang.load(this);
         this.metrics = new VeilMetrics();
         startVeil();
+        this.updateChecker = UpdateChecker.start(this);
+        this.telemetry = VeilTelemetry.start(this);
         if (restoreDebug && veilRuntimeEnabled) {
             setDebugEnabled(true);
         }
@@ -68,7 +83,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             veilEngine = null;
         }
 
-        HandlerList.unregisterAll(this);
+        unregisterVeilListener();
         veilRuntimeEnabled = false;
         getLogger().warning("ChunkVeil runtime disabled: " + reason + " Restored "
                 + restoreResult.players() + " players and refreshed "
@@ -108,6 +123,10 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     VeilMetrics metrics() {
         return metrics;
+    }
+
+    UpdateChecker updateChecker() {
+        return updateChecker;
     }
 
     boolean debugEnabled() {
@@ -152,7 +171,8 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             this.protocolChunkListener = ProtocolChunkListener.start(this, veilEngine, settings, metrics);
             this.veilEngine.start();
 
-            getServer().getPluginManager().registerEvents(new VeilListener(veilEngine), this);
+            this.veilListener = new VeilListener(veilEngine);
+            getServer().getPluginManager().registerEvents(veilListener, this);
             runtimeDisabledReason = null;
             veilRuntimeEnabled = true;
             getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
@@ -185,7 +205,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             debugTask = null;
         }
         debugEnabled = false;
-        HandlerList.unregisterAll(this);
+        unregisterVeilListener();
         if (protocolChunkListener != null) {
             protocolChunkListener.stop();
             protocolChunkListener = null;
@@ -195,6 +215,27 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             veilEngine = null;
         }
         veilRuntimeEnabled = false;
+    }
+
+    private void unregisterVeilListener() {
+        if (veilListener != null) {
+            HandlerList.unregisterAll(veilListener);
+            veilListener = null;
+        }
+    }
+
+    private void stopUpdateChecker() {
+        if (updateChecker != null) {
+            updateChecker.stop();
+            updateChecker = null;
+        }
+    }
+
+    private void stopTelemetry() {
+        if (telemetry != null) {
+            telemetry.shutdown();
+            telemetry = null;
+        }
     }
 
     private void registerCommand() {
