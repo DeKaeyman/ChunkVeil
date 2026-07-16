@@ -22,7 +22,7 @@ For development builds, use the GitHub Actions artifact from the latest successf
   <img src="docs/assets/simple/banner-2.png" alt="ChunkVeil requirements" width="100%">
 </p>
 
-- Paper 1.21.x
+- Paper 1.21.x or 26.x
 - Java 21
 - ProtocolLib compatible with your Paper/Minecraft version
 
@@ -30,7 +30,7 @@ ProtocolLib version matters. Use the ProtocolLib build recommended for your serv
 
 https://www.spigotmc.org/resources/protocollib.1997/
 
-ChunkVeil is tested on Paper 1.21.11. Other Paper 1.21.x builds are allowed and expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
+ChunkVeil ships as a single universal jar. It is tested on Paper 1.21.11 and Paper 26.1.2. Other Paper 1.21.x and 26.x builds are expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
 
 ## Features
 
@@ -91,7 +91,7 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 
 ## Installation
 
-1. Install Paper 1.21.x.
+1. Install Paper 1.21.x or 26.x.
 2. Install Java 21.
 3. Install a ProtocolLib build compatible with your Paper version.
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
@@ -101,11 +101,6 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 ## Default Config
 
 ```yaml
-view-reveal-horizontal-rays: 64
-view-reveal-vertical-rays: 13
-view-reveal-occlusion-grace-blocks: 2
-view-reveal-refresh-millis: 150
-
 worlds:
   world:
     enabled: true
@@ -131,7 +126,36 @@ worlds:
     hide-air: false
     hide-entities: true
     hide-players: false
+
+view-reveal-front-horizontal-rays: 10
+view-reveal-side-horizontal-rays: 5
+view-reveal-back-horizontal-rays: 3
+view-reveal-vertical-rays: 10
+view-reveal-occlusion-grace-blocks: 2
+view-reveal-refresh-millis: 150
+
+performance:
+  max-priority-chunk-updates-per-player-per-tick: 24
+  max-regular-chunk-updates-per-player-per-tick: 1
+  entity-scan-interval-millis: 500
+  entity-scan-max-entities-per-player: 256
+
+packet-protection:
+  cancel-explosions: true
+  cancel-world-events: true
+  cancel-block-crack: true
+  cancel-positional-sounds: true
+
+update-checker:
+  enabled: true
+  interval-hours: 6
+  notify-in-game: true
+
+metrics:
+  enabled: true
 ```
+
+The generated `config.yml` also contains advanced tuning keys (forced rescan intervals, movement/yaw/pitch scan-skip thresholds, yaw direction caching, and optional TPS-adaptive scan quality) with inline documentation.
 
 ## Config Notes
 
@@ -153,6 +177,18 @@ Hides mobs, item drops, minecarts, armor stands, item frames, and similar entiti
 `hide-players`
 Also hides players below the hidden Y range. Default is `false` because hiding players can affect PvP and moderation.
 
+`view-reveal-front/side/back-horizontal-rays`
+Reveal rays are weighted toward the player's view direction: front > sides > back. More rays give more accurate reveals at a higher CPU cost per scan.
+
+`view-reveal-vertical-rays`
+Vertical spread of each horizontal ray direction.
+
+`view-reveal-occlusion-grace-blocks`
+How many solid occluding blocks a ray may pass through before stopping. `0` is strict line-of-sight; `2` reduces visible pop-in.
+
+`packet-protection`
+Cancels secondary packets (explosions, world events, block-crack animations, positional sounds) that originate inside hidden underground zones. These only affect what the watching client receives, never the server world.
+
 ## Compatibility With Anti-Xray
 
 ChunkVeil can run alongside Paper's built-in anti-xray and packet-based plugins such as Orebfuscator. Paper anti-xray usually runs before ProtocolLib sees the outgoing chunk packet, and ChunkVeil then applies its underground hiding pass to the packet the player is about to receive.
@@ -165,6 +201,18 @@ When another plugin also rewrites the same chunk, block-change, or multi-block-c
 
 `/chunkveil status`
 Shows config state, packet rewrite status, tracked players, queued chunks, and metrics.
+
+`/chunkveil compat`
+Shows server, Java, ProtocolLib, rewrite, runtime, and warning diagnostics.
+
+`/chunkveil inspect <player>`
+Shows a player's current ChunkVeil state: visible chunks, queued updates, hidden entities, view distance, and bypass state.
+
+`/chunkveil report`
+Creates a diagnostic report file under `plugins/ChunkVeil/reports/` for troubleshooting.
+
+`/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]`
+Estimates ChunkVeil's performance for a planned server size from live timing samples.
 
 `/chunkveil reload`
 Reloads config and language files, then refreshes online players.
@@ -196,10 +244,15 @@ Alias: `/cv`
 
 - `chunkveil.admin` - Allows all ChunkVeil admin commands.
 - `chunkveil.status` - Allows `/chunkveil status`.
+- `chunkveil.compat` - Allows `/chunkveil compat`.
+- `chunkveil.inspect` - Allows `/chunkveil inspect <player>`.
+- `chunkveil.report` - Allows `/chunkveil report`.
+- `chunkveil.predict` - Allows `/chunkveil predict`.
 - `chunkveil.reload` - Allows `/chunkveil reload`.
 - `chunkveil.refresh` - Allows `/chunkveil refresh`.
 - `chunkveil.toggle` - Allows `/chunkveil disable` and `/chunkveil enable`.
 - `chunkveil.debug` - Allows `/chunkveil debug on/off`.
+- `chunkveil.version` - Allows `/chunkveil version`.
 - `chunkveil.update` - Allows `/chunkveil update` and receives update notices on join.
 - `chunkveil.bypass` - Bypasses all ChunkVeil hiding for that player.
 
