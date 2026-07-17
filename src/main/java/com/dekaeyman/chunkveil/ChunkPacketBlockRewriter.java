@@ -29,12 +29,22 @@ final class ChunkPacketBlockRewriter {
             return 0;
         }
 
-        int minHeight = world.getMinHeight();
+        RewriteResult result = rewriteBuffer(input, world.getMinHeight(), world.getMaxHeight(), hideBelowY, hideAir);
+        if (result.rewrittenSections() > 0) {
+            chunkData.setBuffer(result.buffer());
+            event.getPacket().getLevelChunkData().write(0, chunkData);
+        }
+        return result.hiddenSections();
+    }
+
+    // Pure buffer-level rewrite, separated from ProtocolLib and Bukkit types so
+    // the packet regression test suite can exercise the wire-format handling.
+    RewriteResult rewriteBuffer(byte[] input, int minHeight, int maxHeight, int hideBelowY, boolean hideAir) {
         int minSection = Math.floorDiv(minHeight, 16);
-        int sectionCount = Math.floorDiv(world.getMaxHeight() - world.getMinHeight(), 16);
+        int sectionCount = Math.floorDiv(maxHeight - minHeight, 16);
         int hiddenRangeHeight = hideBelowY - minHeight;
         if (hiddenRangeHeight <= 0) {
-            return 0;
+            return new RewriteResult(input, 0, 0);
         }
 
         PacketReader reader = new PacketReader(input);
@@ -76,15 +86,10 @@ final class ChunkPacketBlockRewriter {
             output.writeBytes(reader.readRemaining());
         }
 
-        if (handledHiddenSections == 0) {
-            return 0;
-        }
+        return new RewriteResult(output.toByteArray(), handledHiddenSections, rewrittenSections);
+    }
 
-        if (rewrittenSections > 0) {
-            chunkData.setBuffer(output.toByteArray());
-            event.getPacket().getLevelChunkData().write(0, chunkData);
-        }
-        return handledHiddenSections;
+    record RewriteResult(byte[] buffer, int hiddenSections, int rewrittenSections) {
     }
 
     private RewrittenSection rewriteSection(PalettedContainer source, int sectionMinY, int hideBelowY, boolean hideAir) {

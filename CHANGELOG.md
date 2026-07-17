@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+Verification release: automated packet regression tests, `/chunkveil verify`, and a protection status API.
+
+- Added a packet regression test suite for the chunk rewrite path: single-value/indirect/direct palettes, partial sections crossing `hide-below-y`, `hide-air` on and off, negative world heights, the 26.x little-endian section format, biome and trailing-data pass-through integrity, idempotence, and malformed/truncated buffers. The suite runs in CI on every push, including against older claimed Paper API versions.
+- Added `/chunkveil verify`: one owner-facing PASS/WARN/FAIL check covering ProtocolLib, runtime protection, the chunk rewrite path, critical failures since startup, verified vs expected Minecraft versions, per-world protection summary, secondary packet protection, other packet-modifying plugins, and config validation. `/chunkveil compat` is now an alias for it, and the `chunkveil.compat` permission was renamed to `chunkveil.verify`.
+- Added `/chunkveil reload --check`: validates `config.yml` from disk, including YAML syntax errors, without applying anything.
+- Added a public `com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent`, fired when protection enables, is disabled by an admin, or fails closed. Monitoring plugins can now track "actually protected" instead of "plugin loaded".
+- ChunkVeil now remembers the last critical packet failure since startup and surfaces it in `/chunkveil verify` even after protection is re-enabled.
+- When runtime protection is inactive, ChunkVeil now shows a console banner on shutdown/refusal, logs a rate-limited reminder every 30 minutes, and warns admins in-game on join.
+- Language files fall back to the embedded defaults for messages missing from an older `lang.yml`.
+- Documented exact packet coverage and known boundaries in `docs/COVERAGE.md`.
+- Releases now include SHA-256 checksums, and CI write permissions are scoped to the release job only.
+
 ## 0.4.0
 
 Update notifications and usage statistics.

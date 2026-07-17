@@ -9,7 +9,7 @@ softdepend:
 commands:
   chunkveil:
     description: Admin tools for ChunkVeil.
-    usage: /chunkveil <status|compat|inspect|report|predict|update|reload|refresh|disable|enable|debug|version>
+    usage: /chunkveil <status|verify|inspect|report|predict|update|reload|refresh|disable|enable|debug|version>
     aliases:
       - cv
 permissions:
@@ -18,7 +18,7 @@ permissions:
     default: op
     children:
       chunkveil.status: true
-      chunkveil.compat: true
+      chunkveil.verify: true
       chunkveil.inspect: true
       chunkveil.report: true
       chunkveil.predict: true
@@ -31,8 +31,8 @@ permissions:
   chunkveil.status:
     description: Allows checking ChunkVeil status.
     default: op
-  chunkveil.compat:
-    description: Allows checking ChunkVeil compatibility diagnostics.
+  chunkveil.verify:
+    description: Allows running the ChunkVeil verification and compatibility check.
     default: op
   chunkveil.inspect:
     description: Allows inspecting ChunkVeil state for an online player.

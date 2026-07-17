@@ -1,5 +1,6 @@
 package com.dekaeyman.chunkveil;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,15 +11,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
+import org.bukkit.configuration.InvalidConfigurationException;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "compat", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "verify", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version");
+
+    // Minecraft versions this ChunkVeil release was manually verified on before
+    // release. Update together with the compatibility tables in the docs.
+    private static final Set<String> VERIFIED_MINECRAFT_VERSIONS = Set.of("1.21.8", "1.21.11", "26.1.2");
     private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final long REQUIRED_REVEAL_PREDICT_SAMPLES = 30L;
     private static final long REQUIRED_CHUNK_MASK_PREDICT_SAMPLES = 5L;
@@ -41,12 +49,12 @@ final class VeilCommand implements TabExecutor {
         String subcommand = args[0].toLowerCase(Locale.ROOT);
         switch (subcommand) {
             case "status" -> sendStatus(sender);
-            case "compat" -> sendCompat(sender);
+            case "verify", "compat" -> sendVerify(sender);
             case "inspect" -> inspect(sender, args);
             case "report" -> report(sender);
             case "predict" -> predict(sender, args);
             case "update" -> update(sender);
-            case "reload" -> reload(sender);
+            case "reload" -> reload(sender, args);
             case "refresh" -> refresh(sender);
             case "disable", "off" -> disable(sender);
             case "enable", "on" -> enable(sender);
@@ -100,6 +108,9 @@ final class VeilCommand implements TabExecutor {
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("debug") && canUse(sender, "chunkveil.debug")) {
             return List.of("on", "off");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("reload") && canUse(sender, "chunkveil.reload")) {
+            return List.of("--check");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("inspect") && canUse(sender, "chunkveil.inspect")) {
             List<String> matches = new ArrayList<>();
@@ -252,78 +263,182 @@ final class VeilCommand implements TabExecutor {
         )));
     }
 
-    private void sendCompat(CommandSender sender) {
-        if (!canUse(sender, "chunkveil.compat")) {
+    private void sendVerify(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.verify")) {
             deny(sender);
             return;
         }
 
         VeilSettings settings = plugin.settings();
         Plugin protocolLib = Bukkit.getPluginManager().getPlugin("ProtocolLib");
-        List<String> warnings = compatibilityWarnings(protocolLib, settings);
+        int warnings = 0;
+        int failures = 0;
 
-        sender.sendMessage(lang().message("commands.compat.title"));
-        sender.sendMessage(lang().message("commands.compat.heading"));
+        sender.sendMessage(lang().message("commands.verify.title"));
+        sender.sendMessage(lang().message("commands.verify.heading"));
 
-        sender.sendMessage(lang().message("commands.compat.section-server"));
-        sender.sendMessage(lang().message("commands.compat.minecraft", Map.of(
-                "badge", infoBadge(),
-                "version", Bukkit.getMinecraftVersion()
-        )));
-        sender.sendMessage(lang().message("commands.compat.server", Map.of(
-                "badge", infoBadge(),
-                "version", Bukkit.getVersion()
-        )));
-        sender.sendMessage(lang().message("commands.compat.bukkit", Map.of(
-                "badge", infoBadge(),
-                "version", Bukkit.getBukkitVersion()
-        )));
-        sender.sendMessage(lang().message("commands.compat.java", Map.of(
-                "badge", infoBadge(),
-                "version", Runtime.version()
-        )));
-
-        sender.sendMessage(lang().message("commands.compat.section-protocollib"));
-        sender.sendMessage(lang().message("commands.compat.protocollib", Map.of(
-                "badge", protocolLib != null && protocolLib.isEnabled() ? okBadge() : failBadge(),
-                "version", protocolLibVersion(protocolLib)
-        )));
-        sender.sendMessage(lang().message("commands.compat.listener", Map.of(
-                "badge", badge(plugin.protocolListenerActive()),
-                "state", state(plugin.protocolListenerActive())
-        )));
-        sender.sendMessage(lang().message("commands.compat.rewrite", Map.of(
-                "badge", badge(plugin.packetRewriteActive()),
-                "state", state(plugin.packetRewriteActive())
-        )));
-
-        sender.sendMessage(lang().message("commands.compat.section-runtime"));
-        sender.sendMessage(lang().message("commands.compat.runtime", Map.of(
-                "badge", badge(plugin.veilRuntimeEnabled()),
-                "state", state(plugin.veilRuntimeEnabled())
-        )));
-        if (!plugin.veilRuntimeEnabled()) {
-            sender.sendMessage(lang().message("commands.compat.last-failure", Map.of(
-                    "badge", failBadge(),
-                    "reason", plugin.runtimeDisabledReason()
-            )));
-        }
-        sender.sendMessage(lang().message("commands.compat.worlds", Map.of(
-                "badge", settings.enabledWorlds().isEmpty() ? warnBadge() : okBadge(),
-                "worlds", worlds(settings.enabledWorlds())
-        )));
-
-        sender.sendMessage(lang().message("commands.compat.section-warnings"));
-        if (warnings.isEmpty()) {
-            sender.sendMessage(lang().message("commands.compat.no-warnings", Map.of("badge", okBadge())));
+        sender.sendMessage(lang().message("commands.verify.section-critical"));
+        boolean protocolLibOk = protocolLib != null && protocolLib.isEnabled();
+        if (protocolLibOk) {
+            verifyLine(sender, okBadge(), "ProtocolLib is installed and enabled.");
         } else {
-            for (String warning : warnings) {
-                sender.sendMessage(lang().message("commands.compat.warning", Map.of(
-                        "badge", warnBadge(),
-                        "warning", warning
-                )));
+            failures++;
+            verifyLine(sender, failBadge(), "ProtocolLib is missing or disabled. ChunkVeil cannot protect chunks without it.");
+        }
+
+        if (plugin.veilRuntimeEnabled()) {
+            verifyLine(sender, okBadge(), "Runtime protection is active.");
+        } else {
+            failures++;
+            verifyLine(sender, failBadge(), "Runtime protection is NOT active: " + plugin.runtimeDisabledReason());
+        }
+
+        if (plugin.protocolListenerActive()) {
+            verifyLine(sender, okBadge(), "Chunk packet listener is registered.");
+        } else {
+            failures++;
+            verifyLine(sender, failBadge(), "Chunk packet listener is not registered.");
+        }
+
+        if (plugin.packetRewriteActive()) {
+            verifyLine(sender, okBadge(), "Raw chunk packet rewrite path is active.");
+        } else {
+            failures++;
+            verifyLine(sender, failBadge(), "Raw chunk packet rewrite path is not active. Install a ProtocolLib build for this exact server version.");
+        }
+
+        String lastFailure = plugin.lastCriticalFailureReason();
+        if (lastFailure == null) {
+            verifyLine(sender, okBadge(), "No critical packet failures since startup.");
+        } else if (plugin.veilRuntimeEnabled()) {
+            warnings++;
+            verifyLine(sender, warnBadge(), "A critical packet failure happened " + age(plugin.lastCriticalFailureAgeMillis())
+                    + ": " + lastFailure + " Protection was re-enabled afterwards; investigate before trusting it.");
+        } else {
+            failures++;
+            verifyLine(sender, failBadge(), "Critical packet failure " + age(plugin.lastCriticalFailureAgeMillis()) + ": " + lastFailure);
+        }
+
+        sender.sendMessage(lang().message("commands.verify.section-server"));
+        String minecraftVersion = Bukkit.getMinecraftVersion();
+        if (VERIFIED_MINECRAFT_VERSIONS.contains(minecraftVersion)) {
+            verifyLine(sender, okBadge(), "Minecraft " + minecraftVersion + " was verified with this ChunkVeil release.");
+        } else {
+            warnings++;
+            verifyLine(sender, warnBadge(), "Minecraft " + minecraftVersion
+                    + " has not been verified with this ChunkVeil release. It is expected to work; test with an xray/freecam client.");
+        }
+        verifyLine(sender, infoBadge(), "ChunkVeil " + plugin.getDescription().getVersion()
+                + ", ProtocolLib " + protocolLibVersion(protocolLib)
+                + ", Java " + Runtime.version() + ".");
+
+        sender.sendMessage(lang().message("commands.verify.section-worlds"));
+        if (settings == null) {
+            failures++;
+            verifyLine(sender, failBadge(), "No configuration is loaded.");
+        } else {
+            Set<String> enabledWorlds = settings.enabledWorlds();
+            if (enabledWorlds.isEmpty()) {
+                warnings++;
+                verifyLine(sender, warnBadge(), "No worlds are protected. Enable at least one world in config.yml.");
+            } else {
+                verifyLine(sender, okBadge(), "Protected worlds: " + worlds(enabledWorlds) + ".");
+                List<String> airVisibleWorlds = new ArrayList<>();
+                for (String worldName : enabledWorlds) {
+                    VeilWorldSettings world = settings.worlds().get(worldName);
+                    if (world == null) {
+                        continue;
+                    }
+                    verifyLine(sender, infoBadge(), worldName + ": hide-below-y=" + world.hideBelowY()
+                            + ", hide-air=" + onOff(world.hideAir())
+                            + ", hide-entities=" + onOff(world.hideEntities())
+                            + ", hide-players=" + onOff(world.hidePlayers()) + ".");
+                    if (!world.hideAir()) {
+                        airVisibleWorlds.add(worldName);
+                    }
+                }
+                if (!airVisibleWorlds.isEmpty()) {
+                    verifyLine(sender, infoBadge(), "hide-air is off in " + String.join(", ", airVisibleWorlds)
+                            + ": cave and tunnel shapes stay readable. This is the documented default trade-off.");
+                }
+            }
+            List<String> unprotectedWorlds = new ArrayList<>(settings.worlds().keySet());
+            unprotectedWorlds.removeAll(enabledWorlds);
+            if (!unprotectedWorlds.isEmpty()) {
+                verifyLine(sender, infoBadge(), "Configured but not protected: " + String.join(", ", unprotectedWorlds) + ".");
             }
         }
+
+        sender.sendMessage(lang().message("commands.verify.section-secondary"));
+        if (settings != null) {
+            warnings += secondaryToggle(sender, "Explosion packets", settings.cancelExplosionsInHiddenZones(), "packet-protection.cancel-explosions");
+            warnings += secondaryToggle(sender, "World event packets", settings.cancelWorldEventsInHiddenZones(), "packet-protection.cancel-world-events");
+            warnings += secondaryToggle(sender, "Block break animations", settings.cancelBlockCrackInHiddenZones(), "packet-protection.cancel-block-crack");
+            warnings += secondaryToggle(sender, "Positional sounds", settings.cancelPositionalSoundsInHiddenZones(), "packet-protection.cancel-positional-sounds");
+        }
+
+        sender.sendMessage(lang().message("commands.verify.section-plugins"));
+        List<String> packetPlugins = detectOtherPacketPlugins();
+        if (packetPlugins.isEmpty()) {
+            verifyLine(sender, okBadge(), "No other known packet-modifying plugins detected.");
+        } else {
+            warnings++;
+            verifyLine(sender, warnBadge(), "Other packet-modifying plugins active: " + String.join(", ", packetPlugins)
+                    + ". Rewrite order matters; test your exact stack with an xray client.");
+        }
+        verifyLine(sender, infoBadge(), "Paper's built-in anti-xray cannot be detected from a plugin. If enabled, it runs before ChunkVeil and is compatible.");
+
+        sender.sendMessage(lang().message("commands.verify.section-config"));
+        if (settings != null && settings.validationWarnings().isEmpty()) {
+            verifyLine(sender, okBadge(), "No config validation warnings.");
+        } else if (settings != null) {
+            for (String warning : settings.validationWarnings()) {
+                warnings++;
+                verifyLine(sender, warnBadge(), warning);
+            }
+        }
+
+        sender.sendMessage(lang().message("commands.verify.title"));
+        if (failures > 0) {
+            sender.sendMessage(lang().message("commands.verify.verdict-fail"));
+        } else if (warnings > 0) {
+            sender.sendMessage(lang().message("commands.verify.verdict-warn", Map.of("warnings", warnings)));
+        } else {
+            sender.sendMessage(lang().message("commands.verify.verdict-pass"));
+        }
+        sender.sendMessage(lang().message("commands.verify.report-hint"));
+    }
+
+    private void verifyLine(CommandSender sender, String badge, String text) {
+        sender.sendMessage(lang().message("commands.verify.line", Map.of("badge", badge, "text", text)));
+    }
+
+    private int secondaryToggle(CommandSender sender, String label, boolean enabled, String configKey) {
+        if (enabled) {
+            verifyLine(sender, okBadge(), label + " in hidden zones are cancelled.");
+            return 0;
+        }
+        verifyLine(sender, warnBadge(), label + " in hidden zones are NOT cancelled (" + configKey + ": false).");
+        return 1;
+    }
+
+    private List<String> detectOtherPacketPlugins() {
+        List<String> found = new ArrayList<>();
+        for (Plugin candidate : Bukkit.getPluginManager().getPlugins()) {
+            String name = candidate.getName();
+            if (!candidate.isEnabled() || name.equalsIgnoreCase("ChunkVeil") || name.equalsIgnoreCase("ProtocolLib")) {
+                continue;
+            }
+            String normalized = name.toLowerCase(Locale.ROOT);
+            if (normalized.contains("orebfuscator") || normalized.contains("xray")) {
+                found.add(name);
+            }
+        }
+        return found;
+    }
+
+    private String onOff(boolean enabled) {
+        return enabled ? "on" : "off";
     }
 
     private void inspect(CommandSender sender, String[] args) {
@@ -582,24 +697,6 @@ final class VeilCommand implements TabExecutor {
     ) {
     }
 
-    private List<String> compatibilityWarnings(Plugin protocolLib, VeilSettings settings) {
-        List<String> warnings = new ArrayList<>();
-        if (protocolLib == null || !protocolLib.isEnabled()) {
-            warnings.add("ProtocolLib is not enabled. ChunkVeil cannot protect chunks without it.");
-        }
-        if (!plugin.veilRuntimeEnabled()) {
-            warnings.add("Runtime protection is disabled: " + plugin.runtimeDisabledReason());
-        }
-        if (!plugin.protocolListenerActive()) {
-            warnings.add("ProtocolLib listener is not active.");
-        }
-        if (!plugin.packetRewriteActive()) {
-            warnings.add("Raw chunk packet rewrite is not active. Install a ProtocolLib build for this exact server version.");
-        }
-        warnings.addAll(settings.validationWarnings());
-        return warnings;
-    }
-
     private String protocolLibVersion(Plugin protocolLib) {
         if (protocolLib == null) {
             return "not installed";
@@ -812,14 +909,50 @@ final class VeilCommand implements TabExecutor {
         return lang().raw("badges.info");
     }
 
-    private void reload(CommandSender sender) {
+    private void reload(CommandSender sender, String[] args) {
         if (!canUse(sender, "chunkveil.reload")) {
             deny(sender);
+            return;
+        }
+        if (args.length >= 2 && (args[1].equalsIgnoreCase("--check") || args[1].equalsIgnoreCase("check"))) {
+            reloadCheck(sender);
             return;
         }
 
         plugin.reloadVeil();
         sender.sendMessage(lang().message("commands.reload"));
+    }
+
+    private void reloadCheck(CommandSender sender) {
+        sender.sendMessage(lang().message("commands.reload-check.heading"));
+
+        File configFile = new File(plugin.getDataFolder(), "config.yml");
+        YamlConfiguration config = new YamlConfiguration();
+        try {
+            config.load(configFile);
+        } catch (IOException | InvalidConfigurationException exception) {
+            sender.sendMessage(lang().message("commands.reload-check.syntax-error", Map.of(
+                    "badge", failBadge(),
+                    "reason", String.valueOf(exception.getMessage())
+            )));
+            return;
+        }
+        sender.sendMessage(lang().message("commands.reload-check.ok", Map.of("badge", okBadge())));
+
+        VeilSettings candidate = VeilSettings.load(plugin, config);
+        if (candidate.validationWarnings().isEmpty()) {
+            sender.sendMessage(lang().message("commands.reload-check.no-warnings", Map.of("badge", okBadge())));
+        } else {
+            for (String warning : candidate.validationWarnings()) {
+                sender.sendMessage(lang().message("commands.reload-check.warning", Map.of(
+                        "badge", warnBadge(),
+                        "warning", warning
+                )));
+            }
+        }
+        sender.sendMessage(lang().message("commands.reload-check.summary", Map.of(
+                "warnings", candidate.validationWarnings().size()
+        )));
     }
 
     private void refresh(CommandSender sender) {
@@ -898,7 +1031,7 @@ final class VeilCommand implements TabExecutor {
         return switch (subcommand) {
             case "reload" -> "chunkveil.reload";
             case "status" -> "chunkveil.status";
-            case "compat" -> "chunkveil.compat";
+            case "verify", "compat" -> "chunkveil.verify";
             case "inspect" -> "chunkveil.inspect";
             case "report" -> "chunkveil.report";
             case "predict" -> "chunkveil.predict";

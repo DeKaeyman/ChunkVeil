@@ -1,5 +1,6 @@
 package com.dekaeyman.chunkveil;
 
+import com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -19,6 +20,8 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     private String runtimeDisabledReason;
     private BukkitTask debugTask;
     private BukkitTask inactiveReminderTask;
+    private String lastCriticalFailureReason;
+    private long lastCriticalFailureAtMillis;
 
     private static final long INACTIVE_REMINDER_TICKS = 20L * 60L * 30L;
 
@@ -78,10 +81,10 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     }
 
     VeilRestoreResult disableVeilRuntime() {
-        return disableVeilRuntime("Disabled by admin command.");
+        return disableVeilRuntime("Disabled by admin command.", VeilProtectionStatusEvent.Cause.DISABLED_BY_ADMIN);
     }
 
-    VeilRestoreResult disableVeilRuntime(String reason) {
+    private VeilRestoreResult disableVeilRuntime(String reason, VeilProtectionStatusEvent.Cause cause) {
         runtimeDisabledReason = reason;
         if (!veilRuntimeEnabled) {
             return new VeilRestoreResult(0, 0);
@@ -104,12 +107,15 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getLogger().warning("ChunkVeil runtime disabled: " + reason + " Restored "
                 + restoreResult.players() + " players and refreshed "
                 + restoreResult.chunks() + " chunks.");
+        fireProtectionStatusEvent(false, cause, reason);
         return restoreResult;
     }
 
     void failClosed(String reason) {
+        lastCriticalFailureReason = reason;
+        lastCriticalFailureAtMillis = System.currentTimeMillis();
         logProtectionInactiveBanner("ChunkVeil failed closed: " + reason);
-        disableVeilRuntime(reason);
+        disableVeilRuntime(reason, VeilProtectionStatusEvent.Cause.FAILED_CLOSED);
     }
 
     private void logProtectionInactiveBanner(String headline) {
@@ -187,6 +193,19 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return runtimeDisabledReason == null ? "Runtime is disabled." : runtimeDisabledReason;
     }
 
+    /** Reason of the last fail-closed shutdown since server start, or null. */
+    String lastCriticalFailureReason() {
+        return lastCriticalFailureReason;
+    }
+
+    long lastCriticalFailureAgeMillis() {
+        return lastCriticalFailureReason == null ? -1L : System.currentTimeMillis() - lastCriticalFailureAtMillis;
+    }
+
+    private void fireProtectionStatusEvent(boolean active, VeilProtectionStatusEvent.Cause cause, String reason) {
+        getServer().getPluginManager().callEvent(new VeilProtectionStatusEvent(active, cause, reason));
+    }
+
     private void startVeil() {
         if (veilRuntimeEnabled) {
             return;
@@ -203,6 +222,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             runtimeDisabledReason = null;
             veilRuntimeEnabled = true;
             getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
+            fireProtectionStatusEvent(true, VeilProtectionStatusEvent.Cause.ENABLED, "");
         } catch (RuntimeException exception) {
             runtimeDisabledReason = exception.getMessage();
             logProtectionInactiveBanner("ChunkVeil refused to enable runtime protection: " + exception.getMessage());

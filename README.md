@@ -44,7 +44,7 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |
 
-If a combination marked *expected* misbehaves, ChunkVeil is designed to fail closed rather than leak (see [Protection Model](#protection-model)), and `/chunkveil compat` will tell you what went wrong.
+If a combination marked *expected* misbehaves, ChunkVeil is designed to fail closed rather than leak (see [Protection Model](#protection-model)), and `/chunkveil verify` will tell you what went wrong.
 
 ## Features
 
@@ -60,6 +60,8 @@ If a combination marked *expected* misbehaves, ChunkVeil is designed to fail clo
 - Cancels hidden block entity update packets below the hidden Y range.
 - Optionally hides underground entities.
 - Includes admin commands, permissions, metrics, debug logging, reload/refresh, and emergency runtime disable.
+- Ships an automated packet regression test suite (run in CI); exact coverage and boundaries are documented in [docs/COVERAGE.md](docs/COVERAGE.md).
+- `/chunkveil verify` gives owners a single PASS/WARN/FAIL protection check, and a public protection-status event lets monitoring plugins track it.
 - Notifies admins in-game when a newer release compatible with the server's Minecraft version is available.
 - Reports anonymous aggregate usage statistics through bStats (opt-out).
 
@@ -87,6 +89,12 @@ What this deliberately does **not** cover:
 - Cave and tunnel shapes when `hide-air: false` (the default). Air stays air for performance; enable `hide-air: true` to conceal shapes as well.
 - Plugins that rewrite the same packets after ChunkVeil. Test your exact stack.
 - Combat, movement, or other gameplay cheats. ChunkVeil is not an anti-cheat.
+
+The full packet-by-packet coverage table, including verification method and known boundaries, is in [docs/COVERAGE.md](docs/COVERAGE.md).
+
+## Developer API
+
+ChunkVeil fires `com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent` on the main thread whenever runtime protection starts, is disabled by an admin, or fails closed. Monitoring plugins can listen to it to alert when the server is loaded but not protected.
 
 ## Visual Comparison
 
@@ -229,8 +237,8 @@ When another plugin also rewrites the same chunk, block-change, or multi-block-c
 `/chunkveil status`
 Shows config state, packet rewrite status, tracked players, queued chunks, and metrics.
 
-`/chunkveil compat`
-Shows server, Java, ProtocolLib, rewrite, runtime, and warning diagnostics.
+`/chunkveil verify`
+One PASS/WARN/FAIL verification of the whole protection state: ProtocolLib, runtime protection, the chunk rewrite path, failures since startup, verified vs expected Minecraft version, per-world settings, secondary packet protection, other packet-modifying plugins, and config validation. `/chunkveil compat` is an alias.
 
 `/chunkveil inspect <player>`
 Shows a player's current ChunkVeil state: visible chunks, queued updates, hidden entities, view distance, and bypass state.
@@ -243,6 +251,9 @@ Estimates ChunkVeil's performance for a planned server size from live timing sam
 
 `/chunkveil reload`
 Reloads config and language files, then refreshes online players.
+
+`/chunkveil reload --check`
+Dry run: validates `config.yml` from disk (including YAML syntax errors) and reports warnings without applying anything.
 
 `/chunkveil refresh`
 Forces a refresh for all online players.
@@ -271,7 +282,7 @@ Alias: `/cv`
 
 - `chunkveil.admin` - Allows all ChunkVeil admin commands.
 - `chunkveil.status` - Allows `/chunkveil status`.
-- `chunkveil.compat` - Allows `/chunkveil compat`.
+- `chunkveil.verify` - Allows `/chunkveil verify`.
 - `chunkveil.inspect` - Allows `/chunkveil inspect <player>`.
 - `chunkveil.report` - Allows `/chunkveil report`.
 - `chunkveil.predict` - Allows `/chunkveil predict`.

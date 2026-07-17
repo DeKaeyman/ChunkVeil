@@ -42,7 +42,12 @@ record VeilSettings(
         List<String> validationWarnings
 ) {
     static VeilSettings load(Plugin plugin) {
-        ConfigurationSection config = plugin.getConfig();
+        return load(plugin, plugin.getConfig());
+    }
+
+    // Also used by /chunkveil reload --check to validate a configuration read
+    // from disk without applying it to the runtime.
+    static VeilSettings load(Plugin plugin, ConfigurationSection config) {
         Map<String, VeilWorldSettings> worlds = new HashMap<>();
         List<String> validationWarnings = new ArrayList<>();
 

@@ -5,10 +5,12 @@ plugins {
 }
 
 group = 'com.dekaeyman'
-version = '0.4.0'
+version = '0.5.0'
 
 def paperMinecraftVersion = "1.21.11"
-def paperApiVersion = "1.21.11-R0.1-SNAPSHOT"
+// Overridable so CI can compile and test against every claimed Paper API
+// version: ./gradlew test -PpaperApi=1.21.8-R0.1-SNAPSHOT
+def paperApiVersion = providers.gradleProperty('paperApi').getOrElse("1.21.11-R0.1-SNAPSHOT")
 def protocolLibVersion = "5.4.0"
 
 repositories {
@@ -23,6 +25,19 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${paperApiVersion}")
     compileOnly("net.dmulloy2:ProtocolLib:${protocolLibVersion}")
     implementation("org.bstats:bstats-bukkit:3.1.0")
+
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("io.papermc.paper:paper-api:${paperApiVersion}")
+    testImplementation("net.dmulloy2:ProtocolLib:${protocolLibVersion}")
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+    }
 }
 
 // The distributed jar is the shaded jar: bStats is bundled and relocated so

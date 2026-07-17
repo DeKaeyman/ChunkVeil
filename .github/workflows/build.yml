@@ -34,8 +34,8 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Build
-        run: ./gradlew shadowJar --no-daemon
+      - name: Build and run packet regression tests
+        run: ./gradlew build --no-daemon
 
       - name: Generate SHA-256 checksums
         run: |
@@ -50,6 +50,36 @@ jobs:
           path: |
             build/libs/*.jar
             build/libs/SHA256SUMS.txt
+
+  test-matrix:
+    name: Tests against Paper API ${{ matrix.paper-api }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every Paper API version the docs list as verified. The default build
+        # job already covers 1.21.11; this matrix proves the code also compiles
+        # and passes the packet regression suite against the older claimed APIs.
+        paper-api:
+          - "1.21.8-R0.1-SNAPSHOT"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Compile and test
+        run: ./gradlew build --no-daemon -PpaperApi=${{ matrix.paper-api }}
 
   release:
     name: Create GitHub release

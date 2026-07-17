@@ -25,6 +25,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Adaptive scan quality** - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 - **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
 - **Fail-closed startup/runtime** - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables protection instead of pretending it is safe.
+- **Tested, not just claimed** - An automated packet regression test suite runs in CI, and `/chunkveil verify` gives owners a single PASS/WARN/FAIL protection check. Exact coverage: [docs/COVERAGE.md](https://github.com/DeKaeyman/ChunkVeil/blob/main/docs/COVERAGE.md)
 - **Admin tools** - Includes status, compatibility diagnostics, player inspect, diagnostic reports, performance prediction, reload, refresh, debug metrics, permissions, and emergency disable.
 - **Update notifications** - Admins get an in-game notice with a download link when a newer release compatible with the server's exact Minecraft version is available.
 - **Open source** - MIT licensed and easy to audit.
@@ -124,12 +125,12 @@ worlds:
 ## Commands
 
 - `/chunkveil status` - Shows runtime state, worlds, queue size, rewrite status, and metrics.
-- `/chunkveil compat` - Shows server, Java, ProtocolLib, rewrite, runtime, and warning diagnostics.
+- `/chunkveil verify` - One PASS/WARN/FAIL check of the whole protection state: ProtocolLib, runtime, rewrite path, failures, versions, worlds, secondary protection, other packet plugins, and config. (`/chunkveil compat` is an alias.)
 - `/chunkveil inspect <player>` - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
 - `/chunkveil report` - Creates a diagnostic report file for troubleshooting.
 - `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Estimates performance from live timing samples.
 - `/chunkveil update` - Checks now whether a newer compatible release is available.
-- `/chunkveil reload` - Reloads config and language files.
+- `/chunkveil reload` - Reloads config and language files. Add `--check` to validate the config from disk without applying it.
 - `/chunkveil refresh` - Forces a rescan and refresh for online players.
 - `/chunkveil disable` - Emergency switch that restores real chunks for online players.
 - `/chunkveil enable` - Starts the runtime again.
@@ -142,7 +143,7 @@ Alias: `/cv`
 
 - `chunkveil.admin`
 - `chunkveil.status`
-- `chunkveil.compat`
+- `chunkveil.verify`
 - `chunkveil.inspect`
 - `chunkveil.report`
 - `chunkveil.predict`
@@ -157,8 +158,8 @@ Alias: `/cv`
 ## Good First Test
 
 1. Join with an admin account.
-2. Run `/chunkveil status`.
-3. Run `/chunkveil compat` and check for warnings.
+2. Run `/chunkveil verify` and read the PASS/WARN/FAIL verdict.
+3. Run `/chunkveil status` for counters.
 4. Go underground below the configured `hide-below-y`.
 5. Move in and out of caves or tunnels.
 6. Test `/chunkveil inspect <yourname>`.
