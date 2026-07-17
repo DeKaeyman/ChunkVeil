@@ -37,9 +37,9 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 
 | Server | ProtocolLib | Java | Status |
 | --- | --- | --- | --- |
-| Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.4.0) |
-| Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.4.0) |
-| Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.4.0) |
+| Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.5.0) |
+| Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.5.0) |
+| Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
 | Other Paper 1.21.x | matching build for that version | 21+ | Expected, not verified |
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |

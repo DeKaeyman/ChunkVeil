@@ -58,7 +58,7 @@ ProtocolLib downloads:
 
 ChunkVeil ships as a single universal jar.
 
-[B]Verified[/B] (this exact combination was run on a real server with this ChunkVeil release):
+[B]Verified with ChunkVeil 0.5.0[/B] (this exact combination was run on a real server):
 [LIST]
 [*]Paper 26.1.2 + newest ProtocolLib dev build for 26.1 + Java 25
 [*]Paper 1.21.11 + newest ProtocolLib build for 1.21.11 + Java 21+
@@ -69,7 +69,7 @@ ChunkVeil ships as a single universal jar.
 
 [B]Unsupported:[/B] Spigot, Folia, and versions before 1.21.
 
-If an expected combination misbehaves, ChunkVeil is designed to fail closed rather than leak, and [B]/chunkveil compat[/B] will tell you what went wrong.
+If an expected combination misbehaves, ChunkVeil is designed to fail closed rather than leak, and [B]/chunkveil verify[/B] will tell you what went wrong. [B]/chunkveil compat[/B] remains an alias.
 
 [SIZE=5][B]How It Works[/B][/SIZE]
 
