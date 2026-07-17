@@ -89,6 +89,8 @@ What this deliberately does **not** cover:
 - Cave and tunnel shapes when `hide-air: false` (the default). Air stays air for performance; enable `hide-air: true` to conceal shapes as well.
 - Plugins that rewrite the same packets after ChunkVeil. Test your exact stack.
 - Combat, movement, or other gameplay cheats. ChunkVeil is not an anti-cheat.
+- World-seed inference from visible terrain and structures. Use separate seed-protection tooling if required.
+- Light in the single section crossed by a non-16-aligned cutoff. Align `hide-below-y` to a multiple of 16 to close that edge.
 
 The full packet-by-packet coverage table, including verification method and known boundaries, is in [docs/COVERAGE.md](docs/COVERAGE.md).
 
@@ -180,6 +182,9 @@ packet-protection:
   cancel-world-events: true
   cancel-block-crack: true
   cancel-positional-sounds: true
+  cancel-particles: true
+  cancel-vibrations: true
+  sanitize-light: true
 
 update-checker:
   enabled: true
@@ -222,7 +227,7 @@ Vertical spread of each horizontal ray direction.
 How many solid occluding blocks a ray may pass through before stopping. `0` is strict line-of-sight; `2` reduces visible pop-in.
 
 `packet-protection`
-Cancels secondary packets (explosions, world events, block-crack animations, positional sounds) that originate inside hidden underground zones. These only affect what the watching client receives, never the server world.
+Cancels secondary packets (explosions, world events, block-crack animations, positional sounds, particles, and vibrations) that originate inside hidden underground zones. It also replaces light arrays for fully concealed sections with darkness. These only affect what the watching client receives, never the server world.
 
 ## Compatibility With Anti-Xray
 

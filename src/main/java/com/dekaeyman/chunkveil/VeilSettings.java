@@ -39,6 +39,9 @@ record VeilSettings(
         boolean cancelWorldEventsInHiddenZones,
         boolean cancelBlockCrackInHiddenZones,
         boolean cancelPositionalSoundsInHiddenZones,
+        boolean cancelParticlesInHiddenZones,
+        boolean cancelVibrationsInHiddenZones,
+        boolean sanitizeLightInHiddenZones,
         List<String> validationWarnings
 ) {
     static VeilSettings load(Plugin plugin) {
@@ -115,6 +118,19 @@ record VeilSettings(
         boolean cancelWorldEventsInHiddenZones = booleanValue(packetProtection, "cancel-world-events", true);
         boolean cancelBlockCrackInHiddenZones = booleanValue(packetProtection, "cancel-block-crack", true);
         boolean cancelPositionalSoundsInHiddenZones = booleanValue(packetProtection, "cancel-positional-sounds", true);
+        boolean cancelParticlesInHiddenZones = booleanValue(packetProtection, "cancel-particles", true);
+        boolean cancelVibrationsInHiddenZones = booleanValue(packetProtection, "cancel-vibrations", true);
+        boolean sanitizeLightInHiddenZones = booleanValue(packetProtection, "sanitize-light", true);
+        if (sanitizeLightInHiddenZones) {
+            for (Map.Entry<String, VeilWorldSettings> entry : worlds.entrySet()) {
+                VeilWorldSettings worldSettings = entry.getValue();
+                if (worldSettings.enabled() && Math.floorMod(worldSettings.hideBelowY(), 16) != 0) {
+                    validationWarnings.add("World '" + entry.getKey() + "' uses hide-below-y="
+                            + worldSettings.hideBelowY() + ", which crosses a light section. Align it to a multiple of 16"
+                            + " to sanitize all light below the cutoff.");
+                }
+            }
+        }
         validateGlobalSettings(
                 viewRevealFrontHorizontalRays,
                 viewRevealSideHorizontalRays,
@@ -174,6 +190,9 @@ record VeilSettings(
                 cancelWorldEventsInHiddenZones,
                 cancelBlockCrackInHiddenZones,
                 cancelPositionalSoundsInHiddenZones,
+                cancelParticlesInHiddenZones,
+                cancelVibrationsInHiddenZones,
+                sanitizeLightInHiddenZones,
                 List.copyOf(validationWarnings)
         );
     }

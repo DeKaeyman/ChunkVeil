@@ -1,6 +1,6 @@
 # Packet Coverage
 
-This document applies to ChunkVeil 0.5.0.
+This document applies to the development version after ChunkVeil 0.5.0.
 
 It lists every information path ChunkVeil knows about, whether it is protected, under which conditions, and how that protection is verified. The goal is not to claim perfection — it is to show exactly where the boundaries are.
 
@@ -53,18 +53,21 @@ It lists every information path ChunkVeil knows about, whether it is protected, 
 | World event packets | Yes | `packet-protection.cancel-world-events: true` (default) | Manual |
 | Block break animations | Yes | `packet-protection.cancel-block-crack: true` (default) | Manual |
 | Positional sound packets | Yes | `packet-protection.cancel-positional-sounds: true` (default) | Manual |
+| Particle packets | Yes | `packet-protection.cancel-particles: true` (default), concealed source position | Manual |
+| Sculk vibration particles | Yes | Covered by particle filtering on modern versions | Manual |
+| Legacy vibration packets | Yes | `packet-protection.cancel-vibrations: true` (default), when exposed by ProtocolLib | Manual |
+| Block and sky light arrays | Yes for fully concealed sections | `packet-protection.sanitize-light: true` (default) | Automated transformation + Manual packet path |
 
 ## Known boundaries
 
 | Information path | Covered | Why |
 | --- | --- | --- |
-| Particle packets | No | Not audited yet. Underground particles (e.g. from machines or mob farms) may be visible. Audit planned. |
-| Sculk vibration / game event packets | No | Not audited yet. Audit planned. |
-| Light data | No | Light is sent unmodified. Cave lighting can weakly hint at hollow spaces. |
+| Light in a section crossed by `hide-below-y` | Partial | The section is left intact to avoid corrupting visible lighting above the cutoff. Align the cutoff to a 16-block boundary to remove this edge. |
 | Cave/tunnel shapes with `hide-air: false` | No | Intentional default trade-off, documented everywhere. Enable `hide-air: true` to close it. |
 | Anything above `hide-below-y` | No | Out of product scope by design. |
 | Plugins rewriting packets after ChunkVeil | No | ChunkVeil uses a late listener priority, but cannot control other plugins. Test your stack. |
 | Combat/movement/mining-behaviour cheats | No | ChunkVeil is not an anti-cheat. |
+| World-seed inference | No | Seed cracking uses terrain and structure observations outside ChunkVeil's concealed packet region. Use separate seed-protection tooling if this is in your threat model. |
 
 ## Fail-closed behaviour
 

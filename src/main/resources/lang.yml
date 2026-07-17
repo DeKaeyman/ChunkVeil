@@ -63,7 +63,7 @@ commands:
     updates-multi: "{badge} &7Multi-block changes rewritten: &f{multi}"
     updates-block-entities: "{badge} &7Block entity updates cancelled: &f{block_entities}"
     entities: "{badge} &7Entity spawns cancelled: &f{spawns}&7, follow-up packets cancelled: &f{packets}"
-    secondary-packets: "{badge} &7Secondary packets cancelled: explosions=&f{explosions}&7, events=&f{events}&7, cracks=&f{cracks}&7, sounds=&f{sounds}"
+    secondary-packets: "{badge} &7Secondary protection: explosions=&f{explosions}&7, events=&f{events}&7, cracks=&f{cracks}&7, sounds=&f{sounds}&7, particles=&f{particles}&7, vibrations=&f{vibrations}&7, light=&f{light}"
     timing: "{badge} &7{metric}: avg=&f{avg}ms&7, max=&f{max}ms&7, samples=&f{samples}"
 
   verify:

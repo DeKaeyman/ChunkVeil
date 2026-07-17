@@ -20,7 +20,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Packet-level protection** - While protection is active, hidden chunk packets are rewritten before they are sent. A hidden chunk never leaves the server with real underground block data in it; a packet that cannot be rewritten safely is cancelled instead of sent.
 - **Block update protection** - Later block changes are also masked while a chunk is hidden.
 - **Block entity protection** - Hidden block entity update packets below the protected Y range are cancelled.
-- **Secondary leak protection** - Can cancel hidden underground explosion, world event, block break animation, and positional sound packets.
+- **Secondary leak protection** - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibrations, and sanitizes concealed light data.
 - **View-based reveals** - Uses a 360-degree visibility scan instead of revealing everything in a simple radius.
 - **Adaptive scan quality** - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 - **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
@@ -53,7 +53,7 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Other Paper 1.21.x / 26.x | matching build for that version | 21+ / 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |
 
-If an *expected* combination misbehaves, ChunkVeil is designed to fail closed rather than leak, and `/chunkveil compat` will tell you what went wrong.
+If an *expected* combination misbehaves, ChunkVeil is designed to fail closed rather than leak, and `/chunkveil verify` will tell you what went wrong. `/chunkveil compat` remains an alias.
 
 ## How It Works
 
@@ -66,6 +66,8 @@ If an *expected* combination misbehaves, ChunkVeil is designed to fail closed ra
 5. Later hidden block/entity updates are masked or cancelled where possible.
 
 ChunkVeil's core rule: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** If the main packet rewrite path cannot start, or a critical rewrite incompatibility appears at runtime, the unsafe packet is cancelled and ChunkVeil fails closed — it disables protection and warns loudly in the console and to online admins. There is no insecure fallback mode: protection is either working as designed or unmistakably off.
+
+It does not protect terrain above your cutoff, infer or conceal the world seed, detect player behaviour, or control plugins that rewrite packets later. Light is sanitized per full 16-block section, so align `hide-below-y` to a multiple of 16 for a clean boundary.
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 

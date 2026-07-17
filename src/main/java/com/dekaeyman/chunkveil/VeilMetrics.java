@@ -17,6 +17,9 @@ final class VeilMetrics {
     private final LongAdder worldEventPacketsCancelled = new LongAdder();
     private final LongAdder blockBreakAnimationPacketsCancelled = new LongAdder();
     private final LongAdder soundPacketsCancelled = new LongAdder();
+    private final LongAdder particlePacketsCancelled = new LongAdder();
+    private final LongAdder vibrationPacketsCancelled = new LongAdder();
+    private final LongAdder lightPacketsSanitized = new LongAdder();
     private final LongAdder chunkUpdatePacketsSent = new LongAdder();
     private final Timing revealScanTiming = new Timing();
     private final Timing packetChunkRewriteTiming = new Timing();
@@ -70,6 +73,18 @@ final class VeilMetrics {
 
     void countSoundPacketCancelled() {
         soundPacketsCancelled.increment();
+    }
+
+    void countParticlePacketCancelled() {
+        particlePacketsCancelled.increment();
+    }
+
+    void countVibrationPacketCancelled() {
+        vibrationPacketsCancelled.increment();
+    }
+
+    void countLightPacketSanitized() {
+        lightPacketsSanitized.increment();
     }
 
     void countChunkUpdatePacketSent() {
@@ -146,6 +161,18 @@ final class VeilMetrics {
 
     long soundPacketsCancelled() {
         return soundPacketsCancelled.sum();
+    }
+
+    long particlePacketsCancelled() {
+        return particlePacketsCancelled.sum();
+    }
+
+    long vibrationPacketsCancelled() {
+        return vibrationPacketsCancelled.sum();
+    }
+
+    long lightPacketsSanitized() {
+        return lightPacketsSanitized.sum();
     }
 
     long chunkUpdatePacketsSent() {

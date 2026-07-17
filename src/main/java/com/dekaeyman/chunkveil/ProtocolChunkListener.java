@@ -141,6 +141,24 @@ final class ProtocolChunkListener {
                     }
                     return;
                 }
+                if (event.getPacketType() == PacketType.Play.Server.WORLD_PARTICLES) {
+                    if (settings.cancelParticlesInHiddenZones()) {
+                        cancelHiddenParticle(event, veilEngine);
+                    }
+                    return;
+                }
+                if (event.getPacketType() == PacketType.Play.Server.ADD_VIBRATION_SIGNAL) {
+                    if (settings.cancelVibrationsInHiddenZones()) {
+                        cancelHiddenVibration(event, veilEngine);
+                    }
+                    return;
+                }
+                if (event.getPacketType() == PacketType.Play.Server.LIGHT_UPDATE) {
+                    if (settings.sanitizeLightInHiddenZones()) {
+                        sanitizeStandaloneLightUpdate(event, veilEngine);
+                    }
+                    return;
+                }
 
                 Player player = event.getPlayer();
                 int chunkX;
@@ -161,6 +179,15 @@ final class ProtocolChunkListener {
                 }
                 if (hidden && !chunkDataWrappersBroken.get()) {
                     stripHiddenBlockEntities(event, settings.hideBelowY(player.getWorld()));
+                }
+                if (hidden && settings.sanitizeLightInHiddenZones()) {
+                    try {
+                        sanitizeLightData(event, player.getWorld());
+                    } catch (Throwable throwable) {
+                        event.setCancelled(true);
+                        scheduleFailClosed(packetCompatibilityFailure("Could not sanitize chunk light data", throwable));
+                        return;
+                    }
                 }
 
                 metrics.countChunkPacket(hidden, packetRewritten);
@@ -225,6 +252,9 @@ final class ProtocolChunkListener {
         addIfSupported(packetTypes, PacketType.Play.Server.BLOCK_BREAK_ANIMATION);
         addIfSupported(packetTypes, PacketType.Play.Server.CUSTOM_SOUND_EFFECT);
         addIfSupported(packetTypes, PacketType.Play.Server.NAMED_SOUND_EFFECT);
+        addIfSupported(packetTypes, PacketType.Play.Server.WORLD_PARTICLES);
+        addIfSupported(packetTypes, PacketType.Play.Server.ADD_VIBRATION_SIGNAL);
+        addIfSupported(packetTypes, PacketType.Play.Server.LIGHT_UPDATE);
         return packetTypes;
     }
 
@@ -547,7 +577,7 @@ final class ProtocolChunkListener {
                 metrics.countExplosionPacketCancelled();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect explosion packet: " + throwable.getMessage());
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect explosion packet", throwable));
         }
     }
 
@@ -562,7 +592,7 @@ final class ProtocolChunkListener {
                 metrics.countWorldEventPacketCancelled();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect world event packet: " + throwable.getMessage());
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect world event packet", throwable));
         }
     }
 
@@ -577,7 +607,7 @@ final class ProtocolChunkListener {
                 metrics.countBlockBreakAnimationPacketCancelled();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect block crack packet: " + throwable.getMessage());
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect block crack packet", throwable));
         }
     }
 
@@ -600,7 +630,90 @@ final class ProtocolChunkListener {
                 metrics.countSoundPacketCancelled();
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().warning("Could not inspect positional sound packet: " + throwable.getMessage());
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect positional sound packet", throwable));
+        }
+    }
+
+    private void cancelHiddenParticle(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            Location location = readPacketLocation(event);
+            if (location == null) {
+                throw new IllegalArgumentException("particle packet has no readable position");
+            }
+            if (veilEngine.shouldHideBlock(event.getPlayer(), location.getBlockX(), location.getBlockY(), location.getBlockZ())) {
+                event.setCancelled(true);
+                metrics.countParticlePacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect particle packet", throwable));
+        }
+    }
+
+    private void cancelHiddenVibration(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            Location location = readPacketLocation(event);
+            if (location == null) {
+                throw new IllegalArgumentException("vibration packet has no readable source position");
+            }
+            if (veilEngine.shouldHideBlock(event.getPlayer(), location.getBlockX(), location.getBlockY(), location.getBlockZ())) {
+                event.setCancelled(true);
+                metrics.countVibrationPacketCancelled();
+            }
+        } catch (Throwable throwable) {
+            scheduleFailClosed(packetCompatibilityFailure("Could not inspect vibration packet", throwable));
+        }
+    }
+
+    private Location readPacketLocation(PacketEvent event) {
+        BlockPosition position = event.getPacket().getBlockPositionModifier().readSafely(0);
+        if (position != null) {
+            return new Location(event.getPlayer().getWorld(), position.getX(), position.getY(), position.getZ());
+        }
+
+        Double x = event.getPacket().getDoubles().readSafely(0);
+        Double y = event.getPacket().getDoubles().readSafely(1);
+        Double z = event.getPacket().getDoubles().readSafely(2);
+        return x == null || y == null || z == null
+                ? null
+                : new Location(event.getPlayer().getWorld(), x, y, z);
+    }
+
+    private void sanitizeStandaloneLightUpdate(PacketEvent event, VeilEngine veilEngine) {
+        try {
+            Integer chunkX = event.getPacket().getIntegers().readSafely(0);
+            Integer chunkZ = event.getPacket().getIntegers().readSafely(1);
+            if (chunkX == null || chunkZ == null) {
+                throw new IllegalArgumentException("light update packet has no readable chunk coordinates");
+            }
+            if (veilEngine.shouldHideChunk(event.getPlayer(), chunkX, chunkZ)) {
+                sanitizeLightData(event, event.getPlayer().getWorld());
+            }
+        } catch (Throwable throwable) {
+            event.setCancelled(true);
+            scheduleFailClosed(packetCompatibilityFailure("Could not sanitize light update packet", throwable));
+        }
+    }
+
+    private void sanitizeLightData(PacketEvent event, World world) {
+        try {
+            WrappedLevelChunkData.LightData light = event.getPacket().getLightUpdateData().readSafely(0);
+            if (light == null) {
+                return;
+            }
+            int changed = LightPacketSanitizer.sanitize(
+                    light.getSkyYMask(),
+                    light.getSkyUpdates(),
+                    light.getBlockYMask(),
+                    light.getBlockUpdates(),
+                    world.getMinHeight(),
+                    settings.hideBelowY(world)
+            );
+            if (changed > 0) {
+                event.getPacket().getLightUpdateData().write(0, light);
+                metrics.countLightPacketSanitized();
+            }
+        } catch (Throwable throwable) {
+            throw new IllegalArgumentException("could not rewrite concealed light arrays", throwable);
         }
     }
 

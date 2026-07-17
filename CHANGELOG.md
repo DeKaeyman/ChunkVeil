@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added filtering for particle packets and legacy vibration packets originating in concealed underground positions. Modern sculk vibrations are covered through their vibration particles.
+- Added block-light and sky-light sanitization for fully concealed chunk sections and standalone light updates.
+- Added packet-protection settings, verification output, diagnostics, counters, and regression tests for the new protections.
+- Secondary packet inspection failures now fail closed instead of only logging a warning.
+- Documented the remaining unavoidable boundaries: cutoff-crossing light sections, behavior analysis, world-seed inference, and later packet modifiers.
+
 ## 0.5.0
 
 Verification release: automated packet regression tests, `/chunkveil verify`, and a protection status API.

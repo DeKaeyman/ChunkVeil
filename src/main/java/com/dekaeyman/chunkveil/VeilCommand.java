@@ -242,7 +242,10 @@ final class VeilCommand implements TabExecutor {
                 "explosions", metrics.explosionPacketsCancelled(),
                 "events", metrics.worldEventPacketsCancelled(),
                 "cracks", metrics.blockBreakAnimationPacketsCancelled(),
-                "sounds", metrics.soundPacketsCancelled()
+                "sounds", metrics.soundPacketsCancelled(),
+                "particles", metrics.particlePacketsCancelled(),
+                "vibrations", metrics.vibrationPacketsCancelled(),
+                "light", metrics.lightPacketsSanitized()
         )));
 
         sender.sendMessage(lang().message("commands.status.section-timings"));
@@ -375,6 +378,9 @@ final class VeilCommand implements TabExecutor {
             warnings += secondaryToggle(sender, "World event packets", settings.cancelWorldEventsInHiddenZones(), "packet-protection.cancel-world-events");
             warnings += secondaryToggle(sender, "Block break animations", settings.cancelBlockCrackInHiddenZones(), "packet-protection.cancel-block-crack");
             warnings += secondaryToggle(sender, "Positional sounds", settings.cancelPositionalSoundsInHiddenZones(), "packet-protection.cancel-positional-sounds");
+            warnings += secondaryToggle(sender, "Particle packets", settings.cancelParticlesInHiddenZones(), "packet-protection.cancel-particles");
+            warnings += secondaryToggle(sender, "Legacy vibration packets", settings.cancelVibrationsInHiddenZones(), "packet-protection.cancel-vibrations");
+            warnings += secondaryToggle(sender, "Chunk light sanitization", settings.sanitizeLightInHiddenZones(), "packet-protection.sanitize-light");
         }
 
         sender.sendMessage(lang().message("commands.verify.section-plugins"));
@@ -782,6 +788,9 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "cancel world events", settings.cancelWorldEventsInHiddenZones());
         appendLine(report, "cancel block break animations", settings.cancelBlockCrackInHiddenZones());
         appendLine(report, "cancel positional sounds", settings.cancelPositionalSoundsInHiddenZones());
+        appendLine(report, "cancel particles", settings.cancelParticlesInHiddenZones());
+        appendLine(report, "cancel legacy vibrations", settings.cancelVibrationsInHiddenZones());
+        appendLine(report, "sanitize concealed light", settings.sanitizeLightInHiddenZones());
 
         appendSection(report, "Validation Warnings");
         if (settings.validationWarnings().isEmpty()) {
@@ -807,6 +816,9 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "world event packets cancelled", metrics.worldEventPacketsCancelled());
         appendLine(report, "block break animation packets cancelled", metrics.blockBreakAnimationPacketsCancelled());
         appendLine(report, "sound packets cancelled", metrics.soundPacketsCancelled());
+        appendLine(report, "particle packets cancelled", metrics.particlePacketsCancelled());
+        appendLine(report, "vibration packets cancelled", metrics.vibrationPacketsCancelled());
+        appendLine(report, "light packets sanitized", metrics.lightPacketsSanitized());
         appendLine(report, "reveal scan avg ms", decimal(metrics.revealScanAverageMillis()));
         appendLine(report, "reveal scan max ms", decimal(metrics.revealScanMaxMillis()));
         appendLine(report, "reveal scan samples", metrics.revealScanSamples());

@@ -27,7 +27,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 [*][B]Persistent reveals[/B] - Keeps revealed chunks visible until they leave the player's render distance.
 [*][B]Block update protection[/B] - Rewrites later block update packets while a chunk is hidden.
 [*][B]Block entity protection[/B] - Cancels hidden block entity update packets below the protected Y range.
-[*][B]Secondary leak protection[/B] - Can cancel hidden underground explosion, world event, block break animation, and positional sound packets.
+[*][B]Secondary leak protection[/B] - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibrations, and sanitizes concealed light data.
 [*][B]Adaptive scan quality[/B] - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 [*][B]Fail-closed safety[/B] - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables runtime protection instead of pretending it is safe.
 [*][B]Tested, not just claimed[/B] - An automated packet regression test suite runs in CI, and [B]/chunkveil verify[/B] gives owners a single PASS/WARN/FAIL protection check.
@@ -84,6 +84,8 @@ If an expected combination misbehaves, ChunkVeil is designed to fail closed rath
 [/LIST]
 
 ChunkVeil's core rule: [B]while protection is active, a hidden chunk never leaves the server with real underground block data in it.[/B] If the main packet rewrite path cannot start, or a critical rewrite incompatibility appears at runtime, the unsafe packet is cancelled and ChunkVeil fails closed - it disables protection and warns loudly in the console and to online admins. There is no insecure fallback mode: protection is either working as designed or unmistakably off.
+
+It does not protect terrain above your cutoff, infer or conceal the world seed, detect player behaviour, or control plugins that rewrite packets later. Light is sanitized per full 16-block section, so align [B]hide-below-y[/B] to a multiple of 16 for a clean boundary.
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 
