@@ -18,6 +18,9 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     private boolean veilRuntimeEnabled;
     private String runtimeDisabledReason;
     private BukkitTask debugTask;
+    private BukkitTask inactiveReminderTask;
+
+    private static final long INACTIVE_REMINDER_TICKS = 20L * 60L * 30L;
 
     @Override
     public void onEnable() {
@@ -33,10 +36,23 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new UpdateNotifyListener(this), this);
         this.updateChecker = UpdateChecker.start(this);
         this.telemetry = VeilTelemetry.start(this);
+
+        // Rate-limited reminder so an inactive protection runtime cannot go
+        // unnoticed in the console while the plugin itself stays loaded.
+        this.inactiveReminderTask = getServer().getScheduler().runTaskTimer(this, () -> {
+            if (!veilRuntimeEnabled) {
+                getLogger().warning("ChunkVeil protection is still INACTIVE (" + runtimeDisabledReason()
+                        + ") Underground data is not being hidden. Run /chunkveil compat for diagnostics.");
+            }
+        }, INACTIVE_REMINDER_TICKS, INACTIVE_REMINDER_TICKS);
     }
 
     @Override
     public void onDisable() {
+        if (inactiveReminderTask != null) {
+            inactiveReminderTask.cancel();
+            inactiveReminderTask = null;
+        }
         stopUpdateChecker();
         stopTelemetry();
         stopVeil();
@@ -92,14 +108,25 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     }
 
     void failClosed(String reason) {
+        logProtectionInactiveBanner("ChunkVeil failed closed: " + reason);
+        disableVeilRuntime(reason);
+    }
+
+    private void logProtectionInactiveBanner(String headline) {
         getLogger().severe("============================================================");
-        getLogger().severe("ChunkVeil failed closed: " + reason);
-        getLogger().severe("Runtime protection is disabled because underground chunk data cannot be safely rewritten before send.");
+        getLogger().severe(" __     _______ ___ _        ___  _____ _____ ");
+        getLogger().severe(" \\ \\   / / ____|_ _| |      / _ \\|  ___|  ___|");
+        getLogger().severe("  \\ \\ / /|  _|  | || |     | | | | |_  | |_   ");
+        getLogger().severe("   \\ V / | |___ | || |___  | |_| |  _| |  _|  ");
+        getLogger().severe("    \\_/  |_____|___|_____|  \\___/|_| |_|      ");
+        getLogger().severe("");
+        getLogger().severe(headline);
+        getLogger().severe("Runtime protection is DISABLED. Underground chunk data is NOT being hidden.");
+        getLogger().severe("The plugin stays loaded for diagnostics, but the server is unprotected.");
         getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
                 + getServer().getMinecraftVersion() + ", then restart the server.");
-        getLogger().severe("No fallback masking was used.");
+        getLogger().severe("No fallback masking is used. Run /chunkveil compat for diagnostics.");
         getLogger().severe("============================================================");
-        disableVeilRuntime(reason);
     }
 
     void enableVeilRuntime() {
@@ -178,12 +205,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
         } catch (RuntimeException exception) {
             runtimeDisabledReason = exception.getMessage();
-            getLogger().severe("============================================================");
-            getLogger().severe("ChunkVeil refused to enable runtime protection: " + exception.getMessage());
-            getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
-                    + getServer().getMinecraftVersion() + ", then restart the server.");
-            getLogger().severe("No fallback masking will be used.");
-            getLogger().severe("============================================================");
+            logProtectionInactiveBanner("ChunkVeil refused to enable runtime protection: " + exception.getMessage());
             stopVeil();
         }
     }

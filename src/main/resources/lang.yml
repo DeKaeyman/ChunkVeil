@@ -10,6 +10,12 @@ badges:
   fail: "&c[FAIL]"
   info: "&b[INFO]"
 
+warnings:
+  protection-inactive-join:
+    - "&c&lChunkVeil protection is NOT active on this server."
+    - "&7Reason: &c{reason}"
+    - "&7Underground data is currently sent unprotected. Run &f/chunkveil compat &7for diagnostics."
+
 commands:
   no-permission: "&cYou do not have permission."
   version: "Version &f{version}"

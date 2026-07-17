@@ -17,7 +17,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Anti-xray for more than ores** - Hide underground terrain, ores, caves, and base layouts.
 - **Anti-ESP support** - Optionally hide underground entities while their chunk is hidden.
 - **Freecam resistance** - Underground chunks stay masked until the player can realistically see or reach them.
-- **Packet-level protection** - Rewrites hidden chunk data before it reaches the client when supported.
+- **Packet-level protection** - While protection is active, hidden chunk packets are rewritten before they are sent. A hidden chunk never leaves the server with real underground block data in it; a packet that cannot be rewritten safely is cancelled instead of sent.
 - **Block update protection** - Later block changes are also masked while a chunk is hidden.
 - **Block entity protection** - Hidden block entity update packets below the protected Y range are cancelled.
 - **Secondary leak protection** - Can cancel hidden underground explosion, world event, block break animation, and positional sound packets.
@@ -34,14 +34,25 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 ![Requirements](https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-2.png)
 
 - Paper 1.21.x or 26.x
-- Java 21
+- Java 21 or newer (Paper 26.x itself requires Java 25)
 - ProtocolLib compatible with your Paper/Minecraft version
 
-ProtocolLib version matters. Use the ProtocolLib build recommended for your server version:
+ProtocolLib version matters. Pick the build that matches your server version:
 
-https://www.spigotmc.org/resources/protocollib.1997/
+- Paper 1.21.4 - 1.21.8: [ProtocolLib 5.4.0](https://github.com/dmulloy2/ProtocolLib/releases) (stable release)
+- Paper 1.21.9 - 1.21.11 and 26.x: the newest ProtocolLib release or [development build](https://github.com/dmulloy2/ProtocolLib) that lists your exact version ([Hangar versions](https://hangar.papermc.io/dmulloy2/ProtocolLib/versions))
 
-ChunkVeil is tested on Paper 1.21.11 and Paper 26.1.2. Other Paper 1.21.x and 26.x builds are expected to work when paired with a compatible ProtocolLib build, but they are not all tested before each release.
+ChunkVeil ships as a single universal jar. **Verified** means this exact combination was run on a real server with this ChunkVeil release. **Expected** means it should work but was not run before release.
+
+| Server | ProtocolLib | Java | Status |
+| --- | --- | --- | --- |
+| Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.4.0) |
+| Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.4.0) |
+| Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.4.0) |
+| Other Paper 1.21.x / 26.x | matching build for that version | 21+ / 25 | Expected, not verified |
+| Spigot, Folia, pre-1.21 | - | - | Unsupported |
+
+If an *expected* combination misbehaves, ChunkVeil is designed to fail closed rather than leak, and `/chunkveil compat` will tell you what went wrong.
 
 ## How It Works
 
@@ -53,7 +64,7 @@ ChunkVeil is tested on Paper 1.21.11 and Paper 26.1.2. Other Paper 1.21.x and 26
 4. Real chunks are restored when they become visible or reachable.
 5. Later hidden block/entity updates are masked or cancelled where possible.
 
-If the main packet rewrite path cannot start, or if a critical packet rewrite incompatibility appears at runtime, ChunkVeil fails closed and disables its runtime protection. This avoids giving admins false confidence when underground data cannot be hidden before send.
+ChunkVeil's core rule: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** If the main packet rewrite path cannot start, or a critical rewrite incompatibility appears at runtime, the unsafe packet is cancelled and ChunkVeil fails closed — it disables protection and warns loudly in the console and to online admins. There is no insecure fallback mode: protection is either working as designed or unmistakably off.
 
 ChunkVeil is primarily designed for the overworld. Nether and End can be configured, but they are disabled by default because their terrain and fake block choices usually need separate testing.
 
@@ -87,8 +98,8 @@ For the strictest protection, test your exact plugin stack with `/chunkveil stat
 
 ## Installation
 
-1. Install Paper 1.21.x.
-2. Install Java 21.
+1. Install Paper 1.21.x or 26.x.
+2. Install Java 21 or newer (Java 25 for Paper 26.x).
 3. Install a ProtocolLib build compatible with your Paper version.
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
 5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.

@@ -1,6 +1,9 @@
 package com.dekaeyman.chunkveil;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +29,15 @@ final class VeilLang {
         }
 
         FileConfiguration config = YamlConfiguration.loadConfiguration(langFile);
+
+        // Keys added in newer releases fall back to the embedded defaults so
+        // upgraded servers with an older lang.yml never see raw message paths.
+        InputStream embedded = plugin.getResource("lang.yml");
+        if (embedded != null) {
+            config.setDefaults(YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(embedded, StandardCharsets.UTF_8)));
+        }
+
         return new VeilLang(config.getString("prefix", DEFAULT_PREFIX), config);
     }
 
