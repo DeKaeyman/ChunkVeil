@@ -5,6 +5,7 @@ import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
+import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.WrappedLevelChunkData;
 import com.comphenix.protocol.wrappers.BlockPosition;
@@ -28,22 +29,23 @@ final class ProtocolChunkListener {
     private final ProtocolManager protocolManager;
     private final VeilMetrics metrics;
     private final VeilSettings settings;
-    private final boolean chunkPacketRewriteSupported;
     private final boolean sectionBlockCountIsLeInt;
-    private final AtomicBoolean chunkDataWrappersBroken = new AtomicBoolean();
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean multiBlockChangeRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean failClosedScheduled = new AtomicBoolean();
+    private final PacketSecurityState securityState = new PacketSecurityState();
+    private final PacketProtectionHealth protectionHealth = new PacketProtectionHealth();
     private final Map<Material, ChunkPacketBlockRewriter> blockRewriters = new ConcurrentHashMap<>();
     private final Map<Material, WrappedBlockData> fakeBlockData = new ConcurrentHashMap<>();
     private int airBlockStateId;
+    private volatile String lastChunkPacketFormat;
+    private volatile String lastChunkWorld;
 
     private ProtocolChunkListener(ChunkVeilPlugin plugin, ProtocolManager protocolManager, VeilMetrics metrics, VeilSettings settings) {
         this.plugin = plugin;
         this.protocolManager = protocolManager;
         this.metrics = metrics;
         this.settings = settings;
-        this.chunkPacketRewriteSupported = supportsChunkPacketRewrite();
         this.sectionBlockCountIsLeInt = sectionBlockCountIsLeInt();
     }
 
@@ -64,11 +66,6 @@ final class ProtocolChunkListener {
     }
 
     private void initializeBlockRewriter(VeilSettings settings) {
-        if (!chunkPacketRewriteSupported) {
-            throw new IllegalStateException("Raw chunk packet rewriting is not supported for Minecraft "
-                    + Bukkit.getMinecraftVersion() + ".");
-        }
-
         try {
             this.airBlockStateId = NmsBlockStateIds.defaultStateId(Material.AIR);
             for (VeilWorldSettings worldSettings : settings.worlds().values()) {
@@ -85,7 +82,28 @@ final class ProtocolChunkListener {
     }
 
     boolean packetRewriteActive() {
-        return !packetBlockRewriteBroken.get();
+        return !packetBlockRewriteBroken.get() && !securityState.isTripped();
+    }
+
+    boolean securityTripped() {
+        return securityState.isTripped();
+    }
+
+    String securityTripPath() {
+        PacketSecurityState.Failure failure = securityState.failure();
+        return failure == null ? null : failure.path().name();
+    }
+
+    PacketProtectionHealth.Snapshot health(PacketSecurityState.ProtectedPath... paths) {
+        return protectionHealth.summarize(paths);
+    }
+
+    String lastChunkPacketFormat() {
+        return lastChunkPacketFormat;
+    }
+
+    String lastChunkWorld() {
+        return lastChunkWorld;
     }
 
     private void register(VeilEngine veilEngine, VeilSettings settings) {
@@ -96,6 +114,10 @@ final class ProtocolChunkListener {
         ) {
             @Override
             public void onPacketSending(PacketEvent event) {
+                if (securityState.cancelIfTripped(() -> event.setCancelled(true))) {
+                    metrics.countSecurityPacketCancelled();
+                    return;
+                }
                 if (isEntitySpawnPacket(event.getPacketType())) {
                     cancelHiddenEntitySpawn(event, veilEngine);
                     return;
@@ -168,42 +190,50 @@ final class ProtocolChunkListener {
                     chunkX = event.getPacket().getIntegers().read(0);
                     chunkZ = event.getPacket().getIntegers().read(1);
                 } catch (RuntimeException exception) {
-                    plugin.getLogger().warning("Could not read outgoing chunk packet coordinates: " + exception.getMessage());
+                    trip(event, PacketSecurityState.ProtectedPath.CHUNK,
+                            packetCompatibilityFailure("Could not read outgoing chunk packet coordinates", exception));
                     return;
                 }
 
                 boolean hidden = veilEngine.shouldHideChunk(player, chunkX, chunkZ);
-                boolean packetRewritten = false;
-                if (hidden && !packetBlockRewriteBroken.get()) {
-                    packetRewritten = rewriteHiddenChunkSections(event, player, chunkX, chunkZ, settings) > 0;
-                }
-                if (hidden && !chunkDataWrappersBroken.get()) {
-                    stripHiddenBlockEntities(event, settings.hideBelowY(player.getWorld()));
-                }
-                if (hidden && settings.sanitizeLightInHiddenZones()) {
-                    try {
-                        sanitizeLightData(event, player.getWorld());
-                    } catch (Throwable throwable) {
-                        event.setCancelled(true);
-                        scheduleFailClosed(packetCompatibilityFailure("Could not sanitize chunk light data", throwable));
-                        return;
-                    }
+                if (!hidden) {
+                    metrics.countChunkPacket(false, false);
+                    return;
                 }
 
-                metrics.countChunkPacket(hidden, packetRewritten);
-                if (packetRewritten) {
-                    Bukkit.getScheduler().runTask(plugin, () -> veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ));
-                } else if (hidden) {
-                    event.setCancelled(true);
-                    scheduleFailClosed("Could not rewrite hidden chunk packet for chunk "
-                            + chunkX + "," + chunkZ + ". The packet was cancelled and runtime protection will stop.");
+                // Work on a deep clone and publish it only after block states,
+                // block entities, and light have all succeeded. A failure can
+                // therefore never send a partially protected chunk.
+                PacketContainer originalPacket = event.getPacket();
+                try {
+                    event.setPacket(originalPacket.deepClone());
+                    int rewrittenSections = rewriteHiddenChunkSections(event, player, chunkX, chunkZ, settings);
+                    if (rewrittenSections <= 0) {
+                        throw new IllegalArgumentException("no concealed chunk sections were rewritten");
+                    }
+                    stripHiddenBlockEntities(event, settings.hideBelowY(player.getWorld()));
+                    if (settings.sanitizeLightInHiddenZones()) {
+                        sanitizeLightData(event, player.getWorld());
+                        protectionHealth.exercised(PacketSecurityState.ProtectedPath.LIGHT);
+                    }
+                    protectionHealth.exercised(PacketSecurityState.ProtectedPath.CHUNK);
+                    lastChunkPacketFormat = sectionBlockCountIsLeInt ? "26.x little-endian count" : "1.21.x big-endian count";
+                    lastChunkWorld = player.getWorld().getName();
+                    metrics.countChunkPacket(true, true);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!securityState.isTripped()) {
+                            veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ);
+                        }
+                    });
+                } catch (Throwable throwable) {
+                    event.setPacket(originalPacket);
+                    packetBlockRewriteBroken.set(true);
+                    trip(event, PacketSecurityState.ProtectedPath.CHUNK, packetCompatibilityFailure(
+                            "Could not atomically protect chunk " + chunkX + "," + chunkZ, throwable));
+                    return;
                 }
             }
         });
-    }
-
-    private boolean supportsChunkPacketRewrite() {
-        return true;
     }
 
     private static boolean sectionBlockCountIsLeInt() {
@@ -308,6 +338,9 @@ final class ProtocolChunkListener {
                 hidden = veilEngine.shouldHideEntity(viewer, entity);
             } else {
                 Location location = readEntityLocation(event, viewer);
+                if (location == null) {
+                    throw new IllegalArgumentException("entity spawn packet has no readable position");
+                }
                 EntityType entityType = readEntityType(event, event.getPacketType() == PacketType.Play.Server.NAMED_ENTITY_SPAWN
                         ? EntityType.PLAYER
                         : null);
@@ -315,27 +348,33 @@ final class ProtocolChunkListener {
             }
 
             if (!hidden) {
+                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
                 return;
             }
 
             event.setCancelled(true);
             metrics.countEntitySpawnCancelled();
             Bukkit.getScheduler().runTask(plugin, () -> {
+                if (securityState.isTripped()) {
+                    return;
+                }
                 if (entity != null) {
                     veilEngine.markEntityHidden(viewer, entity);
                 } else {
                     veilEngine.markEntityHidden(viewer, entityId, entityUuid);
                 }
             });
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect entity spawn packet", throwable);
-            scheduleFailClosed(reason);
+            trip(event, PacketSecurityState.ProtectedPath.ENTITY_SPAWN, reason);
         }
     }
 
     private void cancelHiddenEntityPacket(PacketEvent event, VeilEngine veilEngine) {
         try {
             if (!packetContainsHiddenEntity(event, veilEngine)) {
+                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
             }
 
@@ -344,20 +383,26 @@ final class ProtocolChunkListener {
                 for (int entityId : entityIdsInPacket(event)) {
                     Bukkit.getScheduler().runTask(plugin, () -> veilEngine.forgetEntity(viewer, entityId));
                 }
+                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
             }
 
             event.setCancelled(true);
             metrics.countEntityPacketCancelled();
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect entity packet " + event.getPacketType(), throwable);
-            scheduleFailClosed(reason);
+            trip(event, PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP, reason);
         }
     }
 
     private boolean packetContainsHiddenEntity(PacketEvent event, VeilEngine veilEngine) {
         Player viewer = event.getPlayer();
-        for (int entityId : entityIdsInPacket(event)) {
+        List<Integer> entityIds = entityIdsInPacket(event);
+        if (entityIds.isEmpty()) {
+            throw new IllegalArgumentException("entity packet has no readable entity id");
+        }
+        for (int entityId : entityIds) {
             if (veilEngine.isEntityHidden(viewer, entityId)) {
                 return true;
             }
@@ -457,15 +502,16 @@ final class ProtocolChunkListener {
         try {
             BlockPosition position = event.getPacket().getBlockPositionModifier().read(0);
             if (position == null) {
-                return;
+                throw new IllegalArgumentException("block change packet has no readable position");
             }
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.getPacket().getBlockData().write(0, fakeBlockData(event.getPlayer().getWorld()));
                 metrics.countBlockChangeRewritten();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_CHANGE);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not rewrite block change packet", throwable);
-            scheduleFailClosed(reason);
+            trip(event, PacketSecurityState.ProtectedPath.BLOCK_CHANGE, reason);
         }
     }
 
@@ -475,6 +521,7 @@ final class ProtocolChunkListener {
         }
 
         if (rewriteModernMultiBlockChange(event, veilEngine)) {
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             return;
         }
         rewriteLegacyMultiBlockChange(event, veilEngine);
@@ -491,16 +538,10 @@ final class ProtocolChunkListener {
 
             int length = Math.min(positions.length, blockData.length);
             boolean changed = false;
-            int baseX = sectionPosition.getX() << 4;
-            int baseY = sectionPosition.getY() << 4;
-            int baseZ = sectionPosition.getZ() << 4;
-
             for (int i = 0; i < length; i++) {
-                int encoded = positions[i] & 0xFFFF;
-                int blockX = baseX + ((encoded >>> 8) & 0xF);
-                int blockY = baseY + (encoded & 0xF);
-                int blockZ = baseZ + ((encoded >>> 4) & 0xF);
-                if (veilEngine.shouldHideBlock(event.getPlayer(), blockX, blockY, blockZ)) {
+                PacketCoordinates.BlockCoordinate block = PacketCoordinates.modernMultiBlock(
+                        sectionPosition.getX(), sectionPosition.getY(), sectionPosition.getZ(), positions[i]);
+                if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                     blockData[i] = fakeBlockData(event.getPlayer().getWorld());
                     changed = true;
                 }
@@ -510,6 +551,7 @@ final class ProtocolChunkListener {
                 event.getPacket().getBlockDataArrays().write(0, blockData);
                 metrics.countMultiBlockChangeRewritten();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             return true;
         } catch (Throwable throwable) {
             return false;
@@ -521,7 +563,7 @@ final class ProtocolChunkListener {
             com.comphenix.protocol.wrappers.MultiBlockChangeInfo[] changes =
                     event.getPacket().getMultiBlockChangeInfoArrays().read(0);
             if (changes == null) {
-                return;
+                throw new IllegalArgumentException("multi-block change packet has no readable changes");
             }
 
             boolean changed = false;
@@ -542,7 +584,7 @@ final class ProtocolChunkListener {
         } catch (Throwable throwable) {
             if (multiBlockChangeRewriteBroken.compareAndSet(false, true)) {
                 String reason = packetCompatibilityFailure("Could not rewrite multi-block change packets", throwable);
-                scheduleFailClosed(reason);
+                trip(event, PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE, reason);
             }
         }
     }
@@ -551,15 +593,16 @@ final class ProtocolChunkListener {
         try {
             BlockPosition position = event.getPacket().getBlockPositionModifier().read(0);
             if (position == null) {
-                return;
+                throw new IllegalArgumentException("block entity update has no readable position");
             }
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countBlockEntityUpdateCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_ENTITY);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect block entity update packet", throwable);
-            scheduleFailClosed(reason);
+            trip(event, PacketSecurityState.ProtectedPath.BLOCK_ENTITY, reason);
         }
     }
 
@@ -569,15 +612,17 @@ final class ProtocolChunkListener {
             Double centerY = event.getPacket().getDoubles().readSafely(1);
             Double centerZ = event.getPacket().getDoubles().readSafely(2);
             if (centerX == null || centerY == null || centerZ == null) {
-                return;
+                throw new IllegalArgumentException("explosion packet has no readable center");
             }
-            if (veilEngine.shouldHideBlock(event.getPlayer(),
-                    (int) Math.floor(centerX), (int) Math.floor(centerY), (int) Math.floor(centerZ))) {
+            PacketCoordinates.BlockCoordinate block = PacketCoordinates.floored(centerX, centerY, centerZ);
+            if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                 event.setCancelled(true);
                 metrics.countExplosionPacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.EXPLOSION);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect explosion packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.EXPLOSION,
+                    packetCompatibilityFailure("Could not inspect explosion packet", throwable));
         }
     }
 
@@ -585,14 +630,16 @@ final class ProtocolChunkListener {
         try {
             BlockPosition position = event.getPacket().getBlockPositionModifier().readSafely(0);
             if (position == null) {
-                return;
+                throw new IllegalArgumentException("world event packet has no readable position");
             }
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countWorldEventPacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.WORLD_EVENT);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect world event packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.WORLD_EVENT,
+                    packetCompatibilityFailure("Could not inspect world event packet", throwable));
         }
     }
 
@@ -600,14 +647,16 @@ final class ProtocolChunkListener {
         try {
             BlockPosition position = event.getPacket().getBlockPositionModifier().readSafely(0);
             if (position == null) {
-                return;
+                throw new IllegalArgumentException("block crack packet has no readable position");
             }
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countBlockBreakAnimationPacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_CRACK);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect block crack packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.BLOCK_CRACK,
+                    packetCompatibilityFailure("Could not inspect block crack packet", throwable));
         }
     }
 
@@ -620,17 +669,17 @@ final class ProtocolChunkListener {
             Integer fixedY = event.getPacket().getIntegers().readSafely(1);
             Integer fixedZ = event.getPacket().getIntegers().readSafely(2);
             if (fixedX == null || fixedY == null || fixedZ == null) {
-                return;
+                throw new IllegalArgumentException("positional sound packet has no readable position");
             }
-            int blockX = fixedX >> 3;
-            int blockY = fixedY >> 3;
-            int blockZ = fixedZ >> 3;
-            if (veilEngine.shouldHideBlock(event.getPlayer(), blockX, blockY, blockZ)) {
+            PacketCoordinates.BlockCoordinate block = PacketCoordinates.fixedPointSound(fixedX, fixedY, fixedZ);
+            if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                 event.setCancelled(true);
                 metrics.countSoundPacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect positional sound packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.POSITIONAL_SOUND,
+                    packetCompatibilityFailure("Could not inspect positional sound packet", throwable));
         }
     }
 
@@ -644,8 +693,10 @@ final class ProtocolChunkListener {
                 event.setCancelled(true);
                 metrics.countParticlePacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.PARTICLE);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect particle packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.PARTICLE,
+                    packetCompatibilityFailure("Could not inspect particle packet", throwable));
         }
     }
 
@@ -659,8 +710,10 @@ final class ProtocolChunkListener {
                 event.setCancelled(true);
                 metrics.countVibrationPacketCancelled();
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.VIBRATION);
         } catch (Throwable throwable) {
-            scheduleFailClosed(packetCompatibilityFailure("Could not inspect vibration packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.VIBRATION,
+                    packetCompatibilityFailure("Could not inspect vibration packet", throwable));
         }
     }
 
@@ -688,9 +741,10 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideChunk(event.getPlayer(), chunkX, chunkZ)) {
                 sanitizeLightData(event, event.getPlayer().getWorld());
             }
+            protectionHealth.exercised(PacketSecurityState.ProtectedPath.LIGHT);
         } catch (Throwable throwable) {
-            event.setCancelled(true);
-            scheduleFailClosed(packetCompatibilityFailure("Could not sanitize light update packet", throwable));
+            trip(event, PacketSecurityState.ProtectedPath.LIGHT,
+                    packetCompatibilityFailure("Could not sanitize light update packet", throwable));
         }
     }
 
@@ -724,49 +778,31 @@ final class ProtocolChunkListener {
             int chunkZ,
             VeilSettings settings
     ) {
-        try {
-            World world = player.getWorld();
-            long startNanos = System.nanoTime();
-            int rewrittenSections = rewriterFor(settings.defaultFakeBlock(world))
-                    .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
-            metrics.recordPacketChunkRewriteNanos(System.nanoTime() - startNanos);
-            return rewrittenSections;
-        } catch (Throwable throwable) {
-            if (packetBlockRewriteBroken.compareAndSet(false, true)) {
-                String reason = packetCompatibilityFailure(
-                        "Could not rewrite chunk packet sections for chunk " + chunkX + "," + chunkZ,
-                        throwable
-                );
-                scheduleFailClosed(reason);
-            }
-            return 0;
-        }
+        World world = player.getWorld();
+        long startNanos = System.nanoTime();
+        int rewrittenSections = rewriterFor(settings.defaultFakeBlock(world))
+                .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
+        metrics.recordPacketChunkRewriteNanos(System.nanoTime() - startNanos);
+        return rewrittenSections;
     }
 
     private void stripHiddenBlockEntities(PacketEvent event, int hideBelowY) {
-        try {
-            WrappedLevelChunkData.ChunkData chunkData = event.getPacket().getLevelChunkData().read(0);
-            List<WrappedLevelChunkData.BlockEntityInfo> blockEntities = chunkData.getBlockEntityInfo();
-            if (blockEntities == null || blockEntities.isEmpty()) {
-                return;
-            }
+        WrappedLevelChunkData.ChunkData chunkData = event.getPacket().getLevelChunkData().read(0);
+        List<WrappedLevelChunkData.BlockEntityInfo> blockEntities = chunkData.getBlockEntityInfo();
+        if (blockEntities == null || blockEntities.isEmpty()) {
+            return;
+        }
 
-            List<WrappedLevelChunkData.BlockEntityInfo> visibleBlockEntities = new ArrayList<>(blockEntities.size());
-            for (WrappedLevelChunkData.BlockEntityInfo blockEntity : blockEntities) {
-                if (blockEntity.getY() >= hideBelowY) {
-                    visibleBlockEntities.add(blockEntity);
-                }
+        List<WrappedLevelChunkData.BlockEntityInfo> visibleBlockEntities = new ArrayList<>(blockEntities.size());
+        for (WrappedLevelChunkData.BlockEntityInfo blockEntity : blockEntities) {
+            if (blockEntity.getY() >= hideBelowY) {
+                visibleBlockEntities.add(blockEntity);
             }
+        }
 
-            if (visibleBlockEntities.size() != blockEntities.size()) {
-                chunkData.setBlockEntityInfo(visibleBlockEntities);
-                event.getPacket().getLevelChunkData().write(0, chunkData);
-            }
-        } catch (Throwable throwable) {
-            if (chunkDataWrappersBroken.compareAndSet(false, true)) {
-                String reason = packetCompatibilityFailure("Could not strip hidden block entities from chunk packet", throwable);
-                scheduleFailClosed(reason);
-            }
+        if (visibleBlockEntities.size() != blockEntities.size()) {
+            chunkData.setBlockEntityInfo(visibleBlockEntities);
+            event.getPacket().getLevelChunkData().write(0, chunkData);
         }
     }
 
@@ -785,12 +821,13 @@ final class ProtocolChunkListener {
         });
     }
 
-    private void scheduleFailClosed(String reason) {
-        if (!failClosedScheduled.compareAndSet(false, true)) {
-            return;
+    private void trip(PacketEvent event, PacketSecurityState.ProtectedPath path, String reason) {
+        metrics.countSecurityPacketCancelled();
+        protectionHealth.failed(path, reason);
+        boolean firstTrip = securityState.tripAndCancel(path, reason, () -> event.setCancelled(true));
+        if (firstTrip && failClosedScheduled.compareAndSet(false, true)) {
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.failClosed(reason));
         }
-
-        Bukkit.getScheduler().runTask(plugin, () -> plugin.failClosed(reason));
     }
 
     private String packetCompatibilityFailure(String action, Throwable throwable) {

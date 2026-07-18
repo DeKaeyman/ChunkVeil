@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "feature/**"
     tags:
       - "v*"
   pull_request:
@@ -80,6 +81,47 @@ jobs:
 
       - name: Compile and test
         run: ./gradlew build --no-daemon -PpaperApi=${{ matrix.paper-api }}
+
+  compatibility-metadata:
+    name: Read canonical compatibility metadata
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.metadata.outputs.matrix }}
+      development-version: ${{ steps.metadata.outputs.development-version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: metadata
+        name: Build CI matrix from release-metadata.json
+        run: |
+          echo "matrix=$(jq -c '{include: [.combinations[] as $c | .protocolLib[$c.protocolLib] as $p | {paper: ($c.paperVersion + "-" + ($c.paperBuild|tostring)), java: ($c.java|tostring), paper_url: $c.paperUrl, paper_sha: $c.paperSha256, protocollib: $p.label, protocollib_url: $p.url, protocollib_sha: $p.sha256}]}' release-metadata.json)" >> "$GITHUB_OUTPUT"
+          echo "development-version=$(jq -r '.developmentVersion' release-metadata.json)" >> "$GITHUB_OUTPUT"
+
+  compatibility-boot:
+    name: Boot Paper ${{ matrix.paper }} + ${{ matrix.protocollib }}
+    needs: [build, compatibility-metadata]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.compatibility-metadata.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ChunkVeil
+          path: dist
+      - name: Boot exact server/plugin combination
+        env:
+          PAPER_VERSION: ${{ matrix.paper }}
+          PAPER_URL: ${{ matrix.paper_url }}
+          PAPER_SHA256: ${{ matrix.paper_sha }}
+          PROTOCOLLIB_URL: ${{ matrix.protocollib_url }}
+          PROTOCOLLIB_SHA256: ${{ matrix.protocollib_sha }}
+          CHUNKVEIL_JAR: dist/ChunkVeil-${{ needs.compatibility-metadata.outputs.development-version }}.jar
+        run: bash scripts/compatibility-boot.sh
 
   release:
     name: Create GitHub release

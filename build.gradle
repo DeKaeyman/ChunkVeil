@@ -5,13 +5,14 @@ plugins {
 }
 
 group = 'com.dekaeyman'
-version = '0.5.0'
+def releaseMetadata = new groovy.json.JsonSlurper().parse(file('release-metadata.json'))
+version = releaseMetadata.developmentVersion
 
-def paperMinecraftVersion = "1.21.11"
+def paperMinecraftVersion = releaseMetadata.defaultPaperMinecraft
 // Overridable so CI can compile and test against every claimed Paper API
 // version: ./gradlew test -PpaperApi=1.21.8-R0.1-SNAPSHOT
-def paperApiVersion = providers.gradleProperty('paperApi').getOrElse("1.21.11-R0.1-SNAPSHOT")
-def protocolLibVersion = "5.4.0"
+def paperApiVersion = providers.gradleProperty('paperApi').getOrElse(releaseMetadata.defaultPaperApi)
+def protocolLibVersion = releaseMetadata.compileProtocolLib
 
 repositories {
     mavenCentral()
@@ -85,5 +86,16 @@ processResources {
     filteringCharset 'UTF-8'
     filesMatching('plugin.yml') {
         expand props
+    }
+    from('release-metadata.json')
+}
+
+tasks.register('syncUpdateManifest') {
+    description = 'Regenerates update.json from the canonical release metadata.'
+    inputs.file('release-metadata.json')
+    outputs.file('update.json')
+    doLast {
+        file('update.json').text = groovy.json.JsonOutput.prettyPrint(
+                groovy.json.JsonOutput.toJson([releases: releaseMetadata.releases])) + System.lineSeparator()
     }
 }

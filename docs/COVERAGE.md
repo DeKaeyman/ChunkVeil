@@ -11,6 +11,8 @@ It lists every information path ChunkVeil knows about, whether it is protected, 
 - **Not audited** — not yet analyzed in depth; treat as unprotected until this table says otherwise.
 - **Documented gap** — intentionally not covered; the trade-off is documented.
 
+At runtime, `/chunkveil verify` separately reports whether each enabled category is merely **INITIALIZED**, has been **EXERCISED** successfully by real packets, is **PARTIAL**, or has **FAILED** and tripped quarantine.
+
 ## Chunk data (the critical path)
 
 | Information path | Covered | Conditions | Verification |
@@ -71,4 +73,6 @@ It lists every information path ChunkVeil knows about, whether it is protected, 
 
 ## Fail-closed behaviour
 
-For every path marked *fail-closed*: if ChunkVeil cannot safely inspect or rewrite a critical packet, the packet is cancelled and runtime protection shuts down with loud console warnings, admin notifications, and a `VeilProtectionStatusEvent`. There is no silent fallback to sending real data. Use `/chunkveil verify` to confirm the current state at any time.
+For every enabled protected path, a critical inspection or rewrite failure cancels the triggering packet and atomically trips the packet listener. While `TRIPPED`, subsequent registered protected packet types remain cancelled. ChunkVeil stops its background runtime without refreshing real chunks and reports the failure through console warnings, administrator notifications, `/chunkveil verify`, and `VeilProtectionStatusEvent`.
+
+During initial server boot, `security.stop-server-on-startup-failure: true` stops the server if protection cannot initialize. An explicit administrator `/chunkveil disable` is different: it intentionally restores real chunks before disabling protection.

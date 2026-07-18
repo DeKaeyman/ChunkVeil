@@ -20,7 +20,10 @@ final class VeilMetrics {
     private final LongAdder particlePacketsCancelled = new LongAdder();
     private final LongAdder vibrationPacketsCancelled = new LongAdder();
     private final LongAdder lightPacketsSanitized = new LongAdder();
+    private final LongAdder securityPacketsCancelled = new LongAdder();
     private final LongAdder chunkUpdatePacketsSent = new LongAdder();
+    private final LongAdder entityScanCandidates = new LongAdder();
+    private final LongAdder entityScanCandidatesDeferred = new LongAdder();
     private final Timing revealScanTiming = new Timing();
     private final Timing packetChunkRewriteTiming = new Timing();
     private final Timing chunkUpdateMaskTiming = new Timing();
@@ -87,6 +90,10 @@ final class VeilMetrics {
         lightPacketsSanitized.increment();
     }
 
+    void countSecurityPacketCancelled() {
+        securityPacketsCancelled.increment();
+    }
+
     void countChunkUpdatePacketSent() {
         chunkUpdatePacketsSent.increment();
     }
@@ -105,6 +112,11 @@ final class VeilMetrics {
 
     void recordEntityScanNanos(long nanos) {
         entityScanTiming.record(nanos);
+    }
+
+    void recordEntityScanCandidates(int inspected, int deferred) {
+        entityScanCandidates.add(Math.max(0, inspected));
+        entityScanCandidatesDeferred.add(Math.max(0, deferred));
     }
 
     void recordQueueProcessingNanos(long nanos) {
@@ -175,6 +187,10 @@ final class VeilMetrics {
         return lightPacketsSanitized.sum();
     }
 
+    long securityPacketsCancelled() {
+        return securityPacketsCancelled.sum();
+    }
+
     long chunkUpdatePacketsSent() {
         return chunkUpdatePacketsSent.sum();
     }
@@ -225,6 +241,14 @@ final class VeilMetrics {
 
     long entityScanSamples() {
         return entityScanTiming.samples();
+    }
+
+    long entityScanCandidates() {
+        return entityScanCandidates.sum();
+    }
+
+    long entityScanCandidatesDeferred() {
+        return entityScanCandidatesDeferred.sum();
     }
 
     double queueProcessingAverageMillis() {

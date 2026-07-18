@@ -16,6 +16,14 @@
 # below but disabled by default — their terrain and fake-block choices
 # differ from the overworld, so enable them only if needed.
 
+# Startup confidentiality policy. This only applies while the server is
+# booting. Runtime packet failures quarantine protected traffic but do not
+# stop an already-running server.
+security:
+  # Stop the whole server if ChunkVeil cannot initialize protection during
+  # boot (for example because ProtocolLib is missing or incompatible).
+  stop-server-on-startup-failure: true
+
 worlds:
   world:
     enabled: true

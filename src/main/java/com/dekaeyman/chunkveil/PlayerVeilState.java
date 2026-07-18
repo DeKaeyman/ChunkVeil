@@ -19,6 +19,7 @@ final class PlayerVeilState {
     private final Set<ChunkKey> visibleChunks = ConcurrentHashMap.newKeySet();
     private volatile long lastViewRevealRefreshMillis;
     private volatile long lastEntityScanMillis;
+    private int entityScanCursor;
     private String lastViewRevealWorldName;
     private double lastViewRevealX;
     private double lastViewRevealY;
@@ -178,6 +179,14 @@ final class PlayerVeilState {
         return true;
     }
 
+    int entityScanCursor() {
+        return entityScanCursor;
+    }
+
+    void entityScanCursor(int cursor) {
+        entityScanCursor = Math.max(0, cursor);
+    }
+
     private double distanceSquaredToLastScan(LocationSnapshot snapshot) {
         double dx = snapshot.x() - lastViewRevealX;
         double dy = snapshot.y() - lastViewRevealY;
@@ -214,6 +223,7 @@ final class PlayerVeilState {
         visibleChunks.clear();
         lastViewRevealRefreshMillis = 0L;
         lastEntityScanMillis = 0L;
+        entityScanCursor = 0;
         lastViewRevealWorldName = null;
     }
 

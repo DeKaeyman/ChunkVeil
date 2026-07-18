@@ -50,6 +50,9 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.5.0) |
 | Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.5.0) |
 | Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
+| Paper 26.2 | matching ProtocolLib development build | 25 | Expected, not manually verified |
+
+The repository's [`release-metadata.json`](https://github.com/DeKaeyman/ChunkVeil/blob/main/release-metadata.json) is the canonical machine-readable source for build versions, pinned compatibility artifacts, checksums, and update releases.
 | Other Paper 1.21.x / 26.x | matching build for that version | 21+ / 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |
 
@@ -65,7 +68,7 @@ If an *expected* combination misbehaves, ChunkVeil is designed to fail closed ra
 4. Real chunks are restored when they become visible or reachable.
 5. Later hidden block/entity updates are masked or cancelled where possible.
 
-ChunkVeil's core rule: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** If the main packet rewrite path cannot start, or a critical rewrite incompatibility appears at runtime, the unsafe packet is cancelled and ChunkVeil fails closed — it disables protection and warns loudly in the console and to online admins. There is no insecure fallback mode: protection is either working as designed or unmistakably off.
+ChunkVeil's core rule: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** Chunk blocks, block entities, and concealed light are committed atomically. Startup initialization failure stops the server by default. A runtime parser/rewriter failure cancels the current packet and quarantines subsequent protected traffic without restoring real chunks or stopping the running server. An explicit administrator disable still restores chunks normally.
 
 It does not protect terrain above your cutoff, infer or conceal the world seed, detect player behaviour, or control plugins that rewrite packets later. Light is sanitized per full 16-block section, so align `hide-below-y` to a multiple of 16 for a clean boundary.
 
@@ -127,10 +130,10 @@ worlds:
 ## Commands
 
 - `/chunkveil status` - Shows runtime state, worlds, queue size, rewrite status, and metrics.
-- `/chunkveil verify` - One PASS/WARN/FAIL check of the whole protection state: ProtocolLib, runtime, rewrite path, failures, versions, worlds, secondary protection, other packet plugins, and config. (`/chunkveil compat` is an alias.)
+- `/chunkveil verify` - One PASS/WARN/FAIL check that distinguishes INITIALIZED, EXERCISED, and TRIPPED protection and reports health by packet category. (`/chunkveil compat` is an alias.)
 - `/chunkveil inspect <player>` - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
-- `/chunkveil report` - Creates a diagnostic report file for troubleshooting.
-- `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Estimates performance from live timing samples.
+- `/chunkveil report` - Creates a sanitized report with versions, config checksum, packet health, timings, plugin stack, and anonymized runtime state.
+- `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Experimental current-workload estimate from live timings; not a guaranteed player capacity.
 - `/chunkveil update` - Checks now whether a newer compatible release is available.
 - `/chunkveil reload` - Reloads config and language files. Add `--check` to validate the config from disk without applying it.
 - `/chunkveil refresh` - Forces a rescan and refresh for online players.

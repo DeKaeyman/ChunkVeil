@@ -41,10 +41,13 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.5.0) |
 | Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
 | Other Paper 1.21.x | matching build for that version | 21+ | Expected, not verified |
+| Paper 26.2 | matching ProtocolLib development build | 25 | Expected, not manually verified |
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |
 
 If a combination marked *expected* misbehaves, ChunkVeil is designed to fail closed rather than leak (see [Protection Model](#protection-model)), and `/chunkveil verify` will tell you what went wrong.
+
+The next-snapshot [checksum-pinned compatibility matrix](docs/COMPATIBILITY.md) boots exact Paper and ProtocolLib artifacts in CI. Compatibility and release values come from the canonical [`release-metadata.json`](release-metadata.json), preventing the build, CI matrix, and update manifest from drifting apart. Rows remain pending until their real-server jobs pass.
 
 ## Features
 
@@ -79,9 +82,15 @@ ChunkVeil is primarily designed for the overworld. Nether and End can be configu
 
 ## Protection Model
 
-ChunkVeil's core rule is simple: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** Outgoing chunk packets for protected worlds are rewritten before they are sent. If a chunk packet ever cannot be rewritten safely — for example after a Minecraft or ProtocolLib protocol change — ChunkVeil cancels that packet and fails closed: it shuts protection down and warns loudly in the console and to online admins instead of silently falling back to sending real data.
+ChunkVeil's core rule is simple: **while protection is active, a hidden chunk never leaves the server with real underground block data in it.** Outgoing chunk packets for protected worlds are rewritten before they are sent. Block states, block entities, and concealed light are prepared on a cloned packet and published together only after every step succeeds.
 
-There is no insecure fallback mode. Protection is either working as designed or unmistakably off.
+Failure behavior depends on when and why protection stops:
+
+- **Startup failure:** with the default strict startup policy, the server is stopped if ChunkVeil cannot initialize protection.
+- **Runtime security trip:** the triggering packet is cancelled immediately, the listener enters an atomic `TRIPPED` state, and subsequent protected packet traffic is quarantined. Real chunks are not restored and the running server is not stopped.
+- **Administrator disable:** `/chunkveil disable` is an explicit operational choice and restores real chunks before removing protection.
+
+There is no automatic insecure fallback after a parser or rewriter failure. See the [strict confidentiality preset](docs/STRICT-PRESET.md) for the strongest supplied configuration posture.
 
 What this deliberately does **not** cover:
 
@@ -138,6 +147,9 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 ## Default Config
 
 ```yaml
+security:
+  stop-server-on-startup-failure: true
+
 worlds:
   world:
     enabled: true
@@ -229,6 +241,9 @@ How many solid occluding blocks a ray may pass through before stopping. `0` is s
 `packet-protection`
 Cancels secondary packets (explosions, world events, block-crack animations, positional sounds, particles, and vibrations) that originate inside hidden underground zones. It also replaces light arrays for fully concealed sections with darkness. These only affect what the watching client receives, never the server world.
 
+`security.stop-server-on-startup-failure`
+When `true` (the default), ChunkVeil stops the server during boot if mandatory protection cannot initialize. It never stops the server for a runtime packet failure; runtime failures quarantine protected traffic instead.
+
 ## Compatibility With Anti-Xray
 
 ChunkVeil can run alongside Paper's built-in anti-xray and packet-based plugins such as Orebfuscator. Paper anti-xray usually runs before ProtocolLib sees the outgoing chunk packet, and ChunkVeil then applies its underground hiding pass to the packet the player is about to receive.
@@ -243,16 +258,16 @@ When another plugin also rewrites the same chunk, block-change, or multi-block-c
 Shows config state, packet rewrite status, tracked players, queued chunks, and metrics.
 
 `/chunkveil verify`
-One PASS/WARN/FAIL verification of the whole protection state: ProtocolLib, runtime protection, the chunk rewrite path, failures since startup, verified vs expected Minecraft version, per-world settings, secondary packet protection, other packet-modifying plugins, and config validation. `/chunkveil compat` is an alias.
+One PASS/WARN/FAIL verification of the whole protection state. It distinguishes a listener that is merely **INITIALIZED** from packet paths **EXERCISED** successfully on this running server, reports a `TRIPPED` quarantine, and shows category health for terrain, block data, entities, effects/game events, sounds, and lighting. It also checks versions, worlds, packet modifiers, and configuration. `/chunkveil compat` is an alias.
 
 `/chunkveil inspect <player>`
 Shows a player's current ChunkVeil state: visible chunks, queued updates, hidden entities, view distance, and bypass state.
 
 `/chunkveil report`
-Creates a diagnostic report file under `plugins/ChunkVeil/reports/` for troubleshooting.
+Creates a sanitized diagnostic report under `plugins/ChunkVeil/reports/` with versions, a configuration checksum, protected-world settings, per-packet-path health, counters, timings, plugin-stack versions, and anonymized runtime state. It omits player names, addresses, and coordinates.
 
 `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]`
-Estimates ChunkVeil's performance for a planned server size from live timing samples.
+Produces an **experimental current-workload estimate** from live average timings and fixed activity assumptions. It is useful for comparing settings, but it is not a benchmark or guaranteed player-capacity figure; test representative peak activity before sizing a production server.
 
 `/chunkveil reload`
 Reloads config and language files, then refreshes online players.

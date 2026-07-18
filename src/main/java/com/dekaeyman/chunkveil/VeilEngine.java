@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -56,6 +57,15 @@ final class VeilEngine {
             if (state != null) {
                 revealHiddenEntities(player, state);
             }
+        }
+        states.clear();
+    }
+
+    /** Stops background work after a security trip without revealing anything. */
+    void stopConfidentialityFirst() {
+        if (workerTask != null) {
+            workerTask.cancel();
+            workerTask = null;
         }
         states.clear();
     }
@@ -398,13 +408,16 @@ final class VeilEngine {
             return;
         }
         long startNanos = System.nanoTime();
-        int inspectedEntities = 0;
         int scanBlocks = (effectiveScanRadius(viewer) + 2) * 16;
         try {
-            for (Entity entity : viewer.getWorld().getNearbyEntities(viewer.getLocation(), scanBlocks, scanBlocks, scanBlocks)) {
-                if (inspectedEntities++ >= settings.entityScanMaxEntitiesPerPlayer()) {
-                    break;
-                }
+            List<Entity> candidates = new ArrayList<>(viewer.getWorld().getNearbyEntities(
+                    viewer.getLocation(), scanBlocks, scanBlocks, scanBlocks));
+            candidates.sort(Comparator.comparing(Entity::getUniqueId));
+            FairScanWindow.Selection<Entity> selection = FairScanWindow.select(
+                    candidates, state.entityScanCursor(), settings.entityScanMaxEntitiesPerPlayer());
+            state.entityScanCursor(selection.nextCursor());
+            metrics.recordEntityScanCandidates(selection.items().size(), selection.deferred());
+            for (Entity entity : selection.items()) {
                 if (shouldHideEntity(viewer, entity)) {
                     markEntityHidden(viewer, entity);
                 } else {

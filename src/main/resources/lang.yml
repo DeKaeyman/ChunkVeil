@@ -63,7 +63,7 @@ commands:
     updates-multi: "{badge} &7Multi-block changes rewritten: &f{multi}"
     updates-block-entities: "{badge} &7Block entity updates cancelled: &f{block_entities}"
     entities: "{badge} &7Entity spawns cancelled: &f{spawns}&7, follow-up packets cancelled: &f{packets}"
-    secondary-packets: "{badge} &7Secondary protection: explosions=&f{explosions}&7, events=&f{events}&7, cracks=&f{cracks}&7, sounds=&f{sounds}&7, particles=&f{particles}&7, vibrations=&f{vibrations}&7, light=&f{light}"
+    secondary-packets: "{badge} &7Secondary protection: explosions=&f{explosions}&7, events=&f{events}&7, cracks=&f{cracks}&7, sounds=&f{sounds}&7, particles=&f{particles}&7, vibrations=&f{vibrations}&7, light=&f{light}&7, quarantined=&f{security}"
     timing: "{badge} &7{metric}: avg=&f{avg}ms&7, max=&f{max}ms&7, samples=&f{samples}"
 
   verify:
@@ -104,7 +104,8 @@ commands:
 
   predict:
     title: "&3&m                                "
-    heading: "&bChunkVeil Performance Prediction"
+    heading: "&bChunkVeil Experimental Workload Estimate"
+    disclaimer: "{badge} &eExperimental estimate based on current-session timings and fixed activity assumptions. This is not a guaranteed player capacity."
     usage: "&cUsage: &f/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]&7. cpuTier is single-core strength: &flow&7, &fmid&7, &fhigh&7, or &ftop&7. Prediction needs live timing samples first."
     not-ready: "{badge} &cNot enough live timing data yet. Move players around, load chunks, then try again."
     samples: "{badge} &7Samples: reveal=&f{reveal}&7/&f{required_reveal}&7, chunkUpdateMask=&f{chunk_mask}&7/&f{required_chunk_mask}&7, entity=&f{entity}&7/&f{required_entity}&7, queue=&f{queue}&7/&f{required_queue}"
@@ -113,6 +114,7 @@ commands:
     tick-cost: "{badge} &7Estimated main-tick budget use: &f{tick}ms / 50ms"
     memory: "{badge} &7RAM headroom: &f{memory}"
     confidence: "{badge} &7Confidence: &f{confidence}"
+    assumptions: "{badge} &7Assumptions: &fperiodic entity scans, representative average timings, and similar world/player activity"
     recommendation: "{badge} &7Recommendation: &f{recommendation}"
 
   update:

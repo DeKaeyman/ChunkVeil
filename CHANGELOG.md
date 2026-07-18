@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Expanded `/chunkveil report` with a configuration checksum, enabled plugin versions, per-path packet health and timestamps, critical-failure context, and anonymized player rows that omit names, addresses, and coordinates.
+- Clarified `/chunkveil predict` as an experimental current-workload estimate, documented its assumptions, lowered its confidence wording, and fixed an optimistic entity-scan activity discount.
+- Centralized build, compatibility, pinned artifact, and release data in `release-metadata.json`; Gradle and the CI boot matrix now consume it, and `update.json` has a generation task.
+- Added ten production-linked packet coordinate fixtures for modern multi-block changes, positional sounds, explosions, particles, and vibrations.
+- Added a checksum-pinned real Paper/ProtocolLib boot matrix for 1.21.8, 1.21.11, 26.1.2, and 26.2, with boot evidence kept separate from client packet-path evidence.
+- Entity visibility scans now use a deterministic rotating window, preventing capped scans from repeatedly starving entities at the end of the candidate list; diagnostics count inspected and deferred candidates.
+- Added confidentiality-first failure handling: critical packet errors cancel the triggering packet immediately, atomically trip the listener, and quarantine subsequent protected traffic without restoring real chunks.
+- Chunk block-state, block-entity, and light changes are now prepared on a cloned packet and committed atomically.
+- Added a strict startup policy that stops the server during boot when mandatory protection cannot initialize; runtime trips do not stop an already-running server.
+- Added fault-injection coverage for every protected packet category and a documented strict configuration preset.
+- `/chunkveil verify` now distinguishes initialized packet listeners from paths proven exercised on the running server, and reports health separately for terrain, block data, entities, effects, sounds, and lighting.
+- Clarified Paper 26.2 as expected but not manually verified across the compatibility documentation and update manifest.
 - Added filtering for particle packets and legacy vibration packets originating in concealed underground positions. Modern sculk vibrations are covered through their vibration particles.
 - Added block-light and sky-light sanitization for fully concealed chunk sections and standalone light updates.
 - Added packet-protection settings, verification output, diagnostics, counters, and regression tests for the new protections.

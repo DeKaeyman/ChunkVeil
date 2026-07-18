@@ -2,6 +2,7 @@ package com.dekaeyman.chunkveil;
 
 import com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.Bukkit;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -32,7 +33,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         this.metrics = new VeilMetrics();
 
         registerCommand();
-        startVeil();
+        startVeil(true);
 
         // The update checker and telemetry live outside the veil runtime so a
         // fail-closed shutdown or /chunkveil disable never affects them.
@@ -72,7 +73,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         reloadConfig();
         this.lang = VeilLang.load(this);
         this.metrics = new VeilMetrics();
-        startVeil();
+        startVeil(false);
         this.updateChecker = UpdateChecker.start(this);
         this.telemetry = VeilTelemetry.start(this);
         if (restoreDebug && veilRuntimeEnabled) {
@@ -114,8 +115,20 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     void failClosed(String reason) {
         lastCriticalFailureReason = reason;
         lastCriticalFailureAtMillis = System.currentTimeMillis();
-        logProtectionInactiveBanner("ChunkVeil failed closed: " + reason);
-        disableVeilRuntime(reason, VeilProtectionStatusEvent.Cause.FAILED_CLOSED);
+        runtimeDisabledReason = reason;
+        logProtectionInactiveBanner("ChunkVeil security state TRIPPED: " + reason);
+        setDebugEnabled(false);
+        unregisterVeilListener();
+        if (veilEngine != null) {
+            veilEngine.stopConfidentialityFirst();
+            veilEngine = null;
+        }
+        // Deliberately retain the tripped ProtocolLib listener. It continues
+        // cancelling every protected packet type until an explicit re-enable
+        // replaces it or the server restarts.
+        veilRuntimeEnabled = false;
+        getLogger().severe("Protected packet traffic is quarantined. No real chunks were restored.");
+        fireProtectionStatusEvent(false, VeilProtectionStatusEvent.Cause.FAILED_CLOSED, reason);
     }
 
     private void logProtectionInactiveBanner(String headline) {
@@ -127,11 +140,11 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getLogger().severe("    \\_/  |_____|___|_____|  \\___/|_| |_|      ");
         getLogger().severe("");
         getLogger().severe(headline);
-        getLogger().severe("Runtime protection is DISABLED. Underground chunk data is NOT being hidden.");
-        getLogger().severe("The plugin stays loaded for diagnostics, but the server is unprotected.");
+        getLogger().severe("Runtime protection is INACTIVE.");
+        getLogger().severe("On a runtime security trip, protected packet traffic remains quarantined and real chunks are not restored.");
         getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
                 + getServer().getMinecraftVersion() + ", then restart the server.");
-        getLogger().severe("No fallback masking is used. Run /chunkveil compat for diagnostics.");
+        getLogger().severe("No insecure fallback is used. Run /chunkveil verify for diagnostics.");
         getLogger().severe("============================================================");
     }
 
@@ -139,7 +152,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         if (veilRuntimeEnabled) {
             return;
         }
-        startVeil();
+        startVeil(false);
     }
 
     VeilEngine veilEngine() {
@@ -185,6 +198,28 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return protocolChunkListener != null && protocolChunkListener.packetRewriteActive();
     }
 
+    boolean securityTripped() {
+        return protocolChunkListener != null && protocolChunkListener.securityTripped();
+    }
+
+    String securityTripPath() {
+        return protocolChunkListener == null ? null : protocolChunkListener.securityTripPath();
+    }
+
+    PacketProtectionHealth.Snapshot packetHealth(PacketSecurityState.ProtectedPath... paths) {
+        return protocolChunkListener == null
+                ? new PacketProtectionHealth.Snapshot(PacketProtectionHealth.Status.DISABLED, 0L, 0L, 0L, null)
+                : protocolChunkListener.health(paths);
+    }
+
+    String lastChunkPacketFormat() {
+        return protocolChunkListener == null ? null : protocolChunkListener.lastChunkPacketFormat();
+    }
+
+    String lastChunkWorld() {
+        return protocolChunkListener == null ? null : protocolChunkListener.lastChunkWorld();
+    }
+
     boolean veilRuntimeEnabled() {
         return veilRuntimeEnabled;
     }
@@ -206,9 +241,13 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getServer().getPluginManager().callEvent(new VeilProtectionStatusEvent(active, cause, reason));
     }
 
-    private void startVeil() {
+    private void startVeil(boolean initialBoot) {
         if (veilRuntimeEnabled) {
             return;
+        }
+        if (protocolChunkListener != null) {
+            protocolChunkListener.stop();
+            protocolChunkListener = null;
         }
         try {
             this.settings = VeilSettings.load(this);
@@ -223,10 +262,16 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             veilRuntimeEnabled = true;
             getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
             fireProtectionStatusEvent(true, VeilProtectionStatusEvent.Cause.ENABLED, "");
-        } catch (RuntimeException exception) {
-            runtimeDisabledReason = exception.getMessage();
-            logProtectionInactiveBanner("ChunkVeil refused to enable runtime protection: " + exception.getMessage());
+        } catch (Throwable exception) {
+            String failure = exception.getClass().getSimpleName()
+                    + (exception.getMessage() == null ? "" : ": " + exception.getMessage());
+            runtimeDisabledReason = failure;
+            logProtectionInactiveBanner("ChunkVeil refused to enable runtime protection: " + failure);
             stopVeil();
+            if (initialBoot && getConfig().getBoolean("security.stop-server-on-startup-failure", true)) {
+                getLogger().severe("Strict startup policy is stopping the server because ChunkVeil could not protect it.");
+                Bukkit.getScheduler().runTask(this, Bukkit::shutdown);
+            }
         }
     }
 
@@ -312,6 +357,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " particlePacketsCancelled=" + metrics.particlePacketsCancelled()
                 + " vibrationPacketsCancelled=" + metrics.vibrationPacketsCancelled()
                 + " lightPacketsSanitized=" + metrics.lightPacketsSanitized()
+                + " securityPacketsCancelled=" + metrics.securityPacketsCancelled()
                 + " revealScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanAverageMillis())
                 + " revealScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanMaxMillis())
                 + " packetRewriteAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.packetChunkRewriteAverageMillis())
@@ -320,6 +366,8 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " chunkUpdateMaskMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkUpdateMaskMaxMillis())
                 + " entityScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanAverageMillis())
                 + " entityScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanMaxMillis())
+                + " entityScanCandidates=" + metrics.entityScanCandidates()
+                + " entityScanDeferred=" + metrics.entityScanCandidatesDeferred()
                 + " queueAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingAverageMillis())
                 + " queueMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingMaxMillis()));
     }

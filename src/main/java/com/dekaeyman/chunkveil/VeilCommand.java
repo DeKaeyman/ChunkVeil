@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -24,9 +26,7 @@ import org.bukkit.plugin.Plugin;
 final class VeilCommand implements TabExecutor {
     private static final List<String> SUBCOMMANDS = List.of("status", "verify", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version");
 
-    // Minecraft versions this ChunkVeil release was manually verified on before
-    // release. Update together with the compatibility tables in the docs.
-    private static final Set<String> VERIFIED_MINECRAFT_VERSIONS = Set.of("1.21.8", "1.21.11", "26.1.2");
+    private static final Set<String> VERIFIED_MINECRAFT_VERSIONS = ReleaseMetadata.releaseVerifiedMinecraftVersions();
     private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final long REQUIRED_REVEAL_PREDICT_SAMPLES = 30L;
     private static final long REQUIRED_CHUNK_MASK_PREDICT_SAMPLES = 5L;
@@ -245,7 +245,8 @@ final class VeilCommand implements TabExecutor {
                 "sounds", metrics.soundPacketsCancelled(),
                 "particles", metrics.particlePacketsCancelled(),
                 "vibrations", metrics.vibrationPacketsCancelled(),
-                "light", metrics.lightPacketsSanitized()
+                "light", metrics.lightPacketsSanitized(),
+                "security", metrics.securityPacketsCancelled()
         )));
 
         sender.sendMessage(lang().message("commands.status.section-timings"));
@@ -303,11 +304,26 @@ final class VeilCommand implements TabExecutor {
             verifyLine(sender, failBadge(), "Chunk packet listener is not registered.");
         }
 
-        if (plugin.packetRewriteActive()) {
-            verifyLine(sender, okBadge(), "Raw chunk packet rewrite path is active.");
+        PacketProtectionHealth.Snapshot chunkHealth = plugin.packetHealth(PacketSecurityState.ProtectedPath.CHUNK);
+        if (plugin.packetRewriteActive() && chunkHealth.status() == PacketProtectionHealth.Status.EXERCISED) {
+            verifyLine(sender, okBadge(), "Raw chunk rewrite is EXERCISED: " + chunkHealth.successes()
+                    + " successful concealed packet(s), last " + timestampAge(chunkHealth.lastSuccessMillis())
+                    + ", format=" + value(plugin.lastChunkPacketFormat())
+                    + ", world=" + value(plugin.lastChunkWorld()) + ".");
+        } else if (plugin.packetRewriteActive()) {
+            warnings++;
+            verifyLine(sender, warnBadge(), "Raw chunk rewrite is INITIALIZED but has not yet successfully processed a concealed chunk.");
         } else {
             failures++;
             verifyLine(sender, failBadge(), "Raw chunk packet rewrite path is not active. Install a ProtocolLib build for this exact server version.");
+        }
+
+        if (plugin.securityTripped()) {
+            failures++;
+            verifyLine(sender, failBadge(), "Security state is TRIPPED on " + plugin.securityTripPath()
+                    + ". Protected packet traffic is quarantined; real chunks were not restored.");
+        } else {
+            verifyLine(sender, okBadge(), "Security state has not tripped since this runtime started.");
         }
 
         String lastFailure = plugin.lastCriticalFailureReason();
@@ -381,6 +397,42 @@ final class VeilCommand implements TabExecutor {
             warnings += secondaryToggle(sender, "Particle packets", settings.cancelParticlesInHiddenZones(), "packet-protection.cancel-particles");
             warnings += secondaryToggle(sender, "Legacy vibration packets", settings.cancelVibrationsInHiddenZones(), "packet-protection.cancel-vibrations");
             warnings += secondaryToggle(sender, "Chunk light sanitization", settings.sanitizeLightInHiddenZones(), "packet-protection.sanitize-light");
+
+            int healthResult = sendHealth(sender, "Terrain", plugin.packetHealth(PacketSecurityState.ProtectedPath.CHUNK));
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
+            healthResult = sendHealth(sender, "Block entities and updates", plugin.packetHealth(
+                    PacketSecurityState.ProtectedPath.BLOCK_CHANGE,
+                    PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE,
+                    PacketSecurityState.ProtectedPath.BLOCK_ENTITY));
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
+            healthResult = sendHealth(sender, "Entities", plugin.packetHealth(
+                    PacketSecurityState.ProtectedPath.ENTITY_SPAWN,
+                    PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP));
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
+
+            List<PacketSecurityState.ProtectedPath> effects = new ArrayList<>();
+            if (settings.cancelExplosionsInHiddenZones()) effects.add(PacketSecurityState.ProtectedPath.EXPLOSION);
+            if (settings.cancelWorldEventsInHiddenZones()) effects.add(PacketSecurityState.ProtectedPath.WORLD_EVENT);
+            if (settings.cancelBlockCrackInHiddenZones()) effects.add(PacketSecurityState.ProtectedPath.BLOCK_CRACK);
+            if (settings.cancelParticlesInHiddenZones()) effects.add(PacketSecurityState.ProtectedPath.PARTICLE);
+            if (settings.cancelVibrationsInHiddenZones()) effects.add(PacketSecurityState.ProtectedPath.VIBRATION);
+            healthResult = sendHealth(sender, "Effects and game events", plugin.packetHealth(
+                    effects.toArray(PacketSecurityState.ProtectedPath[]::new)));
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
+            healthResult = sendHealth(sender, "Positional sounds", settings.cancelPositionalSoundsInHiddenZones()
+                    ? plugin.packetHealth(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND)
+                    : plugin.packetHealth());
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
+            healthResult = sendHealth(sender, "Lighting", settings.sanitizeLightInHiddenZones()
+                    ? plugin.packetHealth(PacketSecurityState.ProtectedPath.LIGHT)
+                    : plugin.packetHealth());
+            warnings += healthResult == 1 ? 1 : 0;
+            failures += healthResult == 2 ? 1 : 0;
         }
 
         sender.sendMessage(lang().message("commands.verify.section-plugins"));
@@ -417,6 +469,49 @@ final class VeilCommand implements TabExecutor {
 
     private void verifyLine(CommandSender sender, String badge, String text) {
         sender.sendMessage(lang().message("commands.verify.line", Map.of("badge", badge, "text", text)));
+    }
+
+    /** 0=pass/informational, 1=warn, 2=fail. */
+    private int sendHealth(CommandSender sender, String label, PacketProtectionHealth.Snapshot health) {
+        return switch (health.status()) {
+            case EXERCISED -> {
+                verifyLine(sender, okBadge(), label + ": EXERCISED (" + health.successes()
+                        + " successful, last " + timestampAge(health.lastSuccessMillis()) + ").");
+                yield 0;
+            }
+            case FAILED -> {
+                verifyLine(sender, failBadge(), label + ": FAILED " + timestampAge(health.lastFailureMillis())
+                        + " — " + health.failure());
+                yield 2;
+            }
+            case PARTIAL -> {
+                verifyLine(sender, warnBadge(), label + ": PARTIAL; some enabled packet paths have been exercised, others have not.");
+                yield 1;
+            }
+            case INITIALIZED -> {
+                verifyLine(sender, warnBadge(), label + ": INITIALIZED but not yet exercised by a matching packet.");
+                yield 1;
+            }
+            case DISABLED -> {
+                verifyLine(sender, infoBadge(), label + ": DISABLED by configuration.");
+                yield 0;
+            }
+        };
+    }
+
+    private String timestampAge(long timestampMillis) {
+        return timestampMillis <= 0L ? "never" : age(System.currentTimeMillis() - timestampMillis);
+    }
+
+    private String value(String text) {
+        return text == null || text.isBlank() ? "unknown" : text;
+    }
+
+    private void appendHealth(StringBuilder report, String label, PacketProtectionHealth.Snapshot health) {
+        appendLine(report, label, health.status() + ", successes=" + health.successes()
+                + ", last-success=" + timestampAge(health.lastSuccessMillis())
+                + ", last-failure=" + timestampAge(health.lastFailureMillis())
+                + (health.failure() == null ? "" : ", failure=" + health.failure()));
     }
 
     private int secondaryToggle(CommandSender sender, String label, boolean enabled, String configKey) {
@@ -584,6 +679,7 @@ final class VeilCommand implements TabExecutor {
         Prediction prediction = predictPerformance(players, ramGb, cpuTier, viewDistance);
         sender.sendMessage(lang().message("commands.predict.title"));
         sender.sendMessage(lang().message("commands.predict.heading"));
+        sender.sendMessage(lang().message("commands.predict.disclaimer", Map.of("badge", warnBadge())));
         sender.sendMessage(lang().message("commands.predict.input", Map.of(
                 "badge", infoBadge(),
                 "players", players,
@@ -604,9 +700,10 @@ final class VeilCommand implements TabExecutor {
                 "memory", prediction.memorySummary()
         )));
         sender.sendMessage(lang().message("commands.predict.confidence", Map.of(
-                "badge", okBadge(),
+                "badge", warnBadge(),
                 "confidence", prediction.confidence()
         )));
+        sender.sendMessage(lang().message("commands.predict.assumptions", Map.of("badge", infoBadge())));
         sender.sendMessage(lang().message("commands.predict.recommendation", Map.of(
                 "badge", prediction.recommendationBadge(),
                 "recommendation", prediction.recommendation()
@@ -622,7 +719,9 @@ final class VeilCommand implements TabExecutor {
         double maskMillis = metrics.chunkUpdateMaskAverageMillis();
 
         double revealActivityFactor = 0.18D;
-        double entityActivityFactor = 0.25D;
+        // Entity scans are interval-driven, not movement-driven. Discounting them
+        // made the old estimate systematically optimistic at the target player count.
+        double entityActivityFactor = 1.0D;
         double chunkMaskBurstsPerPlayerPerSecond = 0.12D;
         double revealScansPerSecond = players * (1000.0D / settings.viewRevealRefreshMillis()) * revealActivityFactor;
         double entityScansPerSecond = players * (1000.0D / settings.entityScanIntervalMillis()) * entityActivityFactor;
@@ -636,7 +735,7 @@ final class VeilCommand implements TabExecutor {
         double estimatedPluginRamGb = 0.08D + players * 0.006D + viewDistance * 0.015D;
         boolean memoryWarning = ramGb < 2.0D || estimatedPluginRamGb > ramGb * 0.15D;
         String memorySummary = decimal(estimatedPluginRamGb) + "GB estimated ChunkVeil overhead on " + decimal(ramGb) + "GB server RAM";
-        String confidence = "medium/high, based only on live timing samples from this server session";
+        String confidence = "low/medium; useful for comparison, not capacity planning";
 
         String recommendation;
         String recommendationBadge;
@@ -732,6 +831,8 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "Runtime enabled", plugin.veilRuntimeEnabled());
         appendLine(report, "Runtime disabled reason", plugin.veilRuntimeEnabled() ? "none" : plugin.runtimeDisabledReason());
         appendLine(report, "Debug enabled", plugin.debugEnabled());
+        appendLine(report, "Report privacy", "player names, addresses, and coordinates omitted");
+        appendLine(report, "Configuration SHA-256", configurationChecksum());
 
         appendSection(report, "Server");
         appendLine(report, "Minecraft", Bukkit.getMinecraftVersion());
@@ -743,6 +844,7 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "ProtocolLib", protocolLibVersion(protocolLib));
         appendLine(report, "ProtocolLib listener active", plugin.protocolListenerActive());
         appendLine(report, "Raw chunk packet rewrite active", plugin.packetRewriteActive());
+        appendLine(report, "Other enabled plugins", enabledPluginStack());
 
         appendSection(report, "Worlds");
         appendLine(report, "Enabled worlds", worlds(settings.enabledWorlds()));
@@ -819,6 +921,35 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "particle packets cancelled", metrics.particlePacketsCancelled());
         appendLine(report, "vibration packets cancelled", metrics.vibrationPacketsCancelled());
         appendLine(report, "light packets sanitized", metrics.lightPacketsSanitized());
+        appendLine(report, "security-quarantine packets cancelled", metrics.securityPacketsCancelled());
+        appendLine(report, "security state tripped", plugin.securityTripped());
+        appendLine(report, "security trip path", plugin.securityTripPath() == null ? "none" : plugin.securityTripPath());
+        appendLine(report, "last critical failure", value(plugin.lastCriticalFailureReason()));
+        appendLine(report, "last critical failure age", age(plugin.lastCriticalFailureAgeMillis()));
+        appendLine(report, "last concealed chunk packet format", value(plugin.lastChunkPacketFormat()));
+        appendLine(report, "last concealed chunk world", value(plugin.lastChunkWorld()));
+        appendHealth(report, "terrain health", plugin.packetHealth(PacketSecurityState.ProtectedPath.CHUNK));
+        appendHealth(report, "block data health", plugin.packetHealth(
+                PacketSecurityState.ProtectedPath.BLOCK_CHANGE,
+                PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE,
+                PacketSecurityState.ProtectedPath.BLOCK_ENTITY));
+        appendHealth(report, "entity health", plugin.packetHealth(
+                PacketSecurityState.ProtectedPath.ENTITY_SPAWN,
+                PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP));
+        appendHealth(report, "effects health", plugin.packetHealth(
+                PacketSecurityState.ProtectedPath.EXPLOSION,
+                PacketSecurityState.ProtectedPath.WORLD_EVENT,
+                PacketSecurityState.ProtectedPath.BLOCK_CRACK,
+                PacketSecurityState.ProtectedPath.PARTICLE,
+                PacketSecurityState.ProtectedPath.VIBRATION));
+        appendHealth(report, "sound health", plugin.packetHealth(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND));
+        appendHealth(report, "lighting health", plugin.packetHealth(PacketSecurityState.ProtectedPath.LIGHT));
+        appendSection(report, "Health by Protected Packet Path");
+        for (PacketSecurityState.ProtectedPath path : PacketSecurityState.ProtectedPath.values()) {
+            appendHealth(report, path.name().toLowerCase(Locale.ROOT), plugin.packetHealth(path));
+        }
+
+        appendSection(report, "Performance Snapshot");
         appendLine(report, "reveal scan avg ms", decimal(metrics.revealScanAverageMillis()));
         appendLine(report, "reveal scan max ms", decimal(metrics.revealScanMaxMillis()));
         appendLine(report, "reveal scan samples", metrics.revealScanSamples());
@@ -831,6 +962,8 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "entity scan avg ms", decimal(metrics.entityScanAverageMillis()));
         appendLine(report, "entity scan max ms", decimal(metrics.entityScanMaxMillis()));
         appendLine(report, "entity scan samples", metrics.entityScanSamples());
+        appendLine(report, "entity scan candidates inspected", metrics.entityScanCandidates());
+        appendLine(report, "entity scan candidates deferred", metrics.entityScanCandidatesDeferred());
         appendLine(report, "queue processing avg ms", decimal(metrics.queueProcessingAverageMillis()));
         appendLine(report, "queue processing max ms", decimal(metrics.queueProcessingMaxMillis()));
         appendLine(report, "queue processing samples", metrics.queueProcessingSamples());
@@ -839,8 +972,9 @@ final class VeilCommand implements TabExecutor {
         VeilEngine veilEngine = plugin.veilEngine();
         appendLine(report, "tracked players", veilEngine == null ? 0 : veilEngine.trackedPlayerCount());
         appendLine(report, "queued chunks", veilEngine == null ? 0 : veilEngine.queuedChunkCount());
+        int playerNumber = 0;
         for (Player player : Bukkit.getOnlinePlayers()) {
-            report.append("- player=").append(player.getName())
+            report.append("- player=").append(++playerNumber)
                     .append(", world=").append(player.getWorld().getName())
                     .append(", bypass=").append(player.hasPermission("chunkveil.bypass"));
             if (veilEngine != null) {
@@ -857,6 +991,27 @@ final class VeilCommand implements TabExecutor {
         }
 
         return report.toString();
+    }
+
+    private String enabledPluginStack() {
+        return java.util.Arrays.stream(Bukkit.getPluginManager().getPlugins())
+                .filter(Plugin::isEnabled)
+                .map(candidate -> candidate.getName() + " " + candidate.getDescription().getVersion())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private String configurationChecksum() {
+        try {
+            Path config = plugin.getDataFolder().toPath().resolve("config.yml");
+            if (!Files.isRegularFile(config)) {
+                return "missing";
+            }
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(config));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (IOException | NoSuchAlgorithmException exception) {
+            return "unavailable (" + exception.getClass().getSimpleName() + ")";
+        }
     }
 
     private void appendSection(StringBuilder report, String title) {
