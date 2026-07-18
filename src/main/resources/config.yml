@@ -7,6 +7,10 @@
 # you want to protect, and restart. Most servers do not need to touch
 # anything else.
 
+# Used for additive upgrades. ChunkVeil adds newly introduced defaults while
+# preserving all values you have explicitly configured.
+config-version: 1
+
 
 # ┌──────────────────────────────────────────────────────────────────────┐
 # │  WORLDS                                                              │

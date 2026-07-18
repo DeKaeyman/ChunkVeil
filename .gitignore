@@ -103,6 +103,7 @@ $RECYCLE.BIN/
 .gradle/
 .gradle-home/
 build/
+release-build/
 
 # Ignore Gradle GUI config
 gradle-app.setting

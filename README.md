@@ -37,17 +37,17 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 
 | Server | ProtocolLib | Java | Status |
 | --- | --- | --- | --- |
-| Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.5.0) |
-| Paper 1.21.11 | newest build for 1.21.11 | 21+ historically; current dev build requires 25 | Verified (ChunkVeil 0.5.0) |
-| Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
+| Paper 26.1.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
+| Paper 1.21.11 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
+| Paper 1.21.8 | 5.4.0 | 21+ | Verified (1.0.0-rc.1) |
 | Other Paper 1.21.x | matching build for that version | 21+ | Expected, not verified |
-| Paper 26.2 | matching ProtocolLib development build | 25 | Expected, not manually verified |
+| Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
 | Spigot, Folia, pre-1.21 | - | - | Unsupported |
 
 If a combination marked *expected* misbehaves, ChunkVeil is designed to fail closed rather than leak (see [Protection Model](#protection-model)), and `/chunkveil verify` will tell you what went wrong.
 
-The next-snapshot [checksum-pinned compatibility matrix](docs/COMPATIBILITY.md) boots exact Paper and ProtocolLib artifacts in CI. Compatibility and release values come from the canonical [`release-metadata.json`](release-metadata.json), preventing the build, CI matrix, and update manifest from drifting apart. Rows remain pending until their real-server jobs pass.
+The [checksum-pinned compatibility matrix](docs/COMPATIBILITY.md) boots exact Paper and ProtocolLib artifacts in CI. Compatibility and release values come from the canonical [`release-metadata.json`](release-metadata.json), preventing the build, CI matrix, and update manifest from drifting apart.
 
 ## Features
 
@@ -141,12 +141,16 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 2. Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
 3. Install a ProtocolLib build compatible with your Paper version (see [Compatibility](#compatibility)).
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
-5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.
+5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`. Upgrades add newly introduced defaults without replacing your explicit settings or custom worlds.
 6. Run `/chunkveil status` in-game or from console.
 
 ## Default Config
 
+The generated file is the recommended performance-safe preset: all secondary packet protections and entity hiding are enabled, while `hide-air` stays off to control rewrite cost. For maximum cave and base-shape concealment, use the [strict confidentiality preset](docs/STRICT-PRESET.md), which enables `hide-air` and stops the server on a runtime security trip.
+
 ```yaml
+config-version: 1
+
 security:
   stop-server-on-startup-failure: true
   runtime-trip-action: QUARANTINE

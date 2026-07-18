@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.1
+
+First 1.0 release candidate. Manually gameplay-tested with multiple players on Paper 1.21.8, 1.21.11, 26.1.2, and 26.2 in addition to the automated test and boot matrix.
+
+- Existing configurations are now upgraded additively: newly introduced defaults are written to `config.yml` without overwriting explicit values or custom worlds.
+- Documented both a performance-safe recommended posture and a strict confidentiality preset with `hide-air: true`.
 
 - Security trips can no longer be cleared with `/enable` or `/reload`; quarantine persists until restart. Runtime trip policy is configurable as `QUARANTINE`, `KICK_PLAYERS`, or `STOP_SERVER`.
 - Packet health now separates `OBSERVED` decoding from `ENFORCED` concealment, while `/verify` separates readiness from evidence and offers a machine-readable `--ci` verdict required by compatibility boots.
@@ -18,7 +23,7 @@
 - Added a strict startup policy that stops the server during boot when mandatory protection cannot initialize; runtime trips do not stop an already-running server.
 - Added fault-injection coverage for every protected packet category and a documented strict configuration preset.
 - `/chunkveil verify` now distinguishes initialized packet listeners from paths proven exercised on the running server, and reports health separately for terrain, block data, entities, effects, sounds, and lighting.
-- Clarified Paper 26.2 as expected but not manually verified across the compatibility documentation and update manifest.
+- Added Paper 26.2 to the manually verified compatibility set after successful multi-player testing.
 - Added filtering for particle packets and legacy vibration packets originating in concealed underground positions. Modern sculk vibrations are covered through their vibration particles.
 - Added block-light and sky-light sanitization for fully concealed chunk sections and standalone light updates.
 - Added packet-protection settings, verification output, diagnostics, counters, and regression tests for the new protections.

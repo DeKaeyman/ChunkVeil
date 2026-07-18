@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 class ReleaseMetadataTest {
     @Test void loadsReleaseVerifiedVersionsFromBundledCanonicalMetadata() {
-        assertEquals(Set.of("1.21.8", "1.21.11", "26.1.2"),
+        assertEquals(Set.of("1.21.8", "1.21.11", "26.1.2", "26.2"),
                 ReleaseMetadata.releaseVerifiedMinecraftVersions());
     }
 }

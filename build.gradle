@@ -8,6 +8,12 @@ group = 'com.dekaeyman'
 def releaseMetadata = new groovy.json.JsonSlurper().parse(file('release-metadata.json'))
 version = releaseMetadata.developmentVersion
 
+// CI and normal local builds continue to use build/. An override is useful
+// for recovery when a Windows process or ACL has left generated output locked.
+layout.buildDirectory = providers.gradleProperty('buildDirOverride')
+        .map { file(it) }
+        .orElse(layout.projectDirectory.dir('build'))
+
 def paperMinecraftVersion = releaseMetadata.defaultPaperMinecraft
 // Overridable so CI can compile and test against every claimed Paper API
 // version: ./gradlew test -PpaperApi=1.21.8-R0.1-SNAPSHOT

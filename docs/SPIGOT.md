@@ -58,14 +58,13 @@ ProtocolLib downloads:
 
 ChunkVeil ships as a single universal jar.
 
-[B]Verified with ChunkVeil 0.5.0[/B] (this exact combination was run on a real server):
+[B]Verified with ChunkVeil 1.0.0-rc.1[/B] (CI boot plus multi-player gameplay testing):
 [LIST]
-[*]Paper 26.1.2 + newest ProtocolLib dev build for 26.1 + Java 25
-[*]Paper 1.21.11 + newest ProtocolLib build for 1.21.11 + Java 21+ historically (the current dev build requires Java 25)
+[*]Paper 26.2 + pinned ProtocolLib development build + Java 25
+[*]Paper 26.1.2 + pinned ProtocolLib development build + Java 25
+[*]Paper 1.21.11 + pinned ProtocolLib development build + Java 25
 [*]Paper 1.21.8 + ProtocolLib 5.4.0 + Java 21+
 [/LIST]
-
-[B]Expected, not manually verified[/B]: Paper 26.2 + a matching ProtocolLib development build + Java 25.
 
 The canonical machine-readable build, compatibility, checksum, and release data is maintained in [URL='https://github.com/DeKaeyman/ChunkVeil/blob/main/release-metadata.json']release-metadata.json[/URL]. The build, CI boot matrix, and update manifest consume that source.
 
@@ -129,7 +128,7 @@ For the strictest protection, test your exact plugin stack with /chunkveil statu
 [*]Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
 [*]Install ProtocolLib compatible with your Paper version: [URL]https://www.spigotmc.org/resources/protocollib.1997/[/URL]
 [*]Put ChunkVeil in your server's plugins folder.
-[*]Start the server once to generate config.yml and lang.yml.
+[*]Start the server once to generate config.yml and lang.yml. Upgrades add new defaults without replacing explicit settings or custom worlds.
 [*]Run [B]/chunkveil status[/B] in-game or from console.
 [/LIST]
 
@@ -146,6 +145,8 @@ For the strictest protection, test your exact plugin stack with /chunkveil statu
     hide-players: false[/CODE]
 
 [SIZE=5][B]Recommended Settings[/B][/SIZE]
+
+All packet protections are enabled by default. The generated configuration is performance-safe; the strict preset in the GitHub repository enables hide-air and uses STOP_SERVER for runtime security trips.
 
 [B]hide-air: false[/B] is recommended for most servers. It keeps air visible and only fakes non-air underground blocks, which is much lighter.
 

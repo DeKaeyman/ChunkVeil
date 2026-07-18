@@ -28,3 +28,5 @@ packet-protection:
 ```
 
 Apply the same world settings separately to Nether or End worlds you choose to protect, using a dimension-appropriate fake block. `hide-players: true` can affect PvP and moderation visibility, so test it before deploying the preset broadly.
+
+The normal generated configuration is the recommended performance-safe preset: all packet protections and underground entity hiding are enabled, while `hide-air` and `hide-players` remain disabled. Existing configurations are upgraded additively on startup, so newly introduced options appear without replacing explicit values or custom worlds.

@@ -1,6 +1,7 @@
 package com.dekaeyman.chunkveil;
 
 import com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent;
+import java.util.List;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.Bukkit;
 import org.bukkit.event.HandlerList;
@@ -31,6 +32,12 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        List<String> migratedConfigPaths = VeilConfigMigrator.migrate(this);
+        if (!migratedConfigPaths.isEmpty()) {
+            getLogger().info("Updated config.yml to schema " + VeilConfigMigrator.CURRENT_CONFIG_VERSION
+                    + " by adding " + migratedConfigPaths.size()
+                    + " missing default setting(s); existing values were preserved.");
+        }
         this.lang = VeilLang.load(this);
         this.metrics = new VeilMetrics();
 

@@ -47,10 +47,10 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 
 | Server | ProtocolLib | Java | Status |
 | --- | --- | --- | --- |
-| Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.5.0) |
-| Paper 1.21.11 | newest build for 1.21.11 | 21+ historically; current dev build requires 25 | Verified (ChunkVeil 0.5.0) |
-| Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
-| Paper 26.2 | matching ProtocolLib development build | 25 | Expected, not manually verified |
+| Paper 26.1.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
+| Paper 1.21.11 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
+| Paper 1.21.8 | 5.4.0 | 21+ | Verified (1.0.0-rc.1) |
+| Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0-rc.1) |
 
 The repository's [`release-metadata.json`](https://github.com/DeKaeyman/ChunkVeil/blob/main/release-metadata.json) is the canonical machine-readable source for build versions, pinned compatibility artifacts, checksums, and update releases.
 | Other Paper 1.21.x / 26.x | matching build for that version | 21+ / 25 | Expected, not verified |
@@ -108,10 +108,12 @@ For the strictest protection, test your exact plugin stack with `/chunkveil stat
 2. Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
 3. Install a ProtocolLib build compatible with your Paper version.
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
-5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.
+5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`. Existing configurations receive new defaults automatically without losing explicit settings or custom worlds.
 6. Run `/chunkveil status` in-game or from console.
 
 ## Recommended Default
+
+All packet protections are enabled in the generated configuration. This preset keeps `hide-air` disabled for predictable performance; use the repository's strict preset when hiding cave and base shapes is more important than rewrite cost.
 
 ```yaml
 worlds:

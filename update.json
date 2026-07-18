@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.0.0-rc.1",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.0-rc.1",
+            "severity": "recommended",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Release candidate with confidentiality-first packet handling, particle/vibration/light protection, diagnostics, compatibility verification, and additive config upgrades."
+        },
+        {
             "version": "0.5.0",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v0.5.0",
             "severity": "recommended",
