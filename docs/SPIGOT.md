@@ -27,7 +27,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 [*][B]Persistent reveals[/B] - Keeps revealed chunks visible until they leave the player's render distance.
 [*][B]Block update protection[/B] - Rewrites later block update packets while a chunk is hidden.
 [*][B]Block entity protection[/B] - Cancels hidden block entity update packets below the protected Y range.
-[*][B]Secondary leak protection[/B] - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibrations, and sanitizes concealed light data.
+[*][B]Secondary leak protection[/B] - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibration origins, and sanitizes concealed light data. Vibration destinations remain under validation.
 [*][B]Adaptive scan quality[/B] - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 [*][B]Fail-closed safety[/B] - If ProtocolLib or raw chunk rewriting is not compatible, ChunkVeil disables runtime protection instead of pretending it is safe.
 [*][B]Tested, not just claimed[/B] - An automated packet regression test suite runs in CI, and [B]/chunkveil verify[/B] gives owners a single PASS/WARN/FAIL protection check.
@@ -159,15 +159,15 @@ For the strictest protection, test your exact plugin stack with /chunkveil statu
 
 [LIST]
 [*][B]/chunkveil status[/B] - Shows runtime state, worlds, queue size, rewrite status, and metrics.
-[*][B]/chunkveil verify[/B] - One PASS/WARN/FAIL check that distinguishes INITIALIZED, EXERCISED, and TRIPPED protection and reports health by packet category. ([B]/chunkveil compat[/B] is an alias.)
+[*][B]/chunkveil verify[/B] - Separates protection readiness from INITIALIZED, OBSERVED, ENFORCED, and FAILED runtime evidence. ([B]/chunkveil compat[/B] is an alias.)
 [*][B]/chunkveil inspect <player>[/B] - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
-[*][B]/chunkveil report[/B] - Creates a sanitized report with versions, config checksum, per-path packet health, timings, plugin stack, and anonymized runtime state.
+[*][B]/chunkveil report public|full[/B] - Creates either a public-safe report with hashed world names or a detailed private-support report.
 [*][B]/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance][/B] - Experimental current-workload estimate from live timings. It is not a benchmark or guaranteed player capacity.
 [*][B]/chunkveil update[/B] - Checks now whether a newer compatible release is available.
 [*][B]/chunkveil reload[/B] - Reloads config and language files. Add [B]--check[/B] to validate the config from disk without applying it.
 [*][B]/chunkveil refresh[/B] - Forces a rescan and refresh for online players.
 [*][B]/chunkveil disable[/B] - Emergency switch that restores real chunks for online players.
-[*][B]/chunkveil enable[/B] - Starts the runtime again.
+[*][B]/chunkveil enable[/B] - Restarts only an intentionally admin-disabled runtime; a security trip requires a server restart.
 [*][B]/chunkveil debug on|off[/B] - Toggles debug metrics.
 [*][B]/chunkveil version[/B] - Shows the plugin version.
 [/LIST]
@@ -209,14 +209,14 @@ Alias: [B]/cv[/B]
 
 [B]Verification meanings:[/B]
 [LIST]
-[*][COLOR=#15803d][B]PASS[/B][/COLOR] - Enabled protection paths have been exercised successfully and no critical failure is known.
-[*][COLOR=#b45309][B]WARN[/B][/COLOR] - Protection is initialized, but one or more paths or server combinations have not yet been exercised or manually verified.
+[*][COLOR=#15803d][B]PASS[/B][/COLOR] - Protection initialized safely and no critical failure is known; runtime evidence is reported separately.
+[*][COLOR=#b45309][B]WARN[/B][/COLOR] - Readiness is intact, but configuration or compatibility needs attention. Unobserved rare packets are informational evidence, not readiness warnings.
 [*][COLOR=#b91c1c][B]FAIL[/B][/COLOR] - Protection is inactive, a required component is missing, or the security state has tripped. Read the reported reason before allowing players to continue.
 [/LIST]
 
 Exact packet coverage and remaining boundaries: [URL]https://github.com/DeKaeyman/ChunkVeil/blob/main/docs/COVERAGE.md[/URL]
 
-[B]Quick troubleshooting:[/B] use the ProtocolLib build for your exact Paper version, run [B]/chunkveil verify[/B], then create a sanitized report with [B]/chunkveil report[/B]. If the state is TRIPPED, restart or explicitly re-enable only after fixing the reported incompatibility.
+[B]Quick troubleshooting:[/B] use the ProtocolLib build for your exact Paper version, run [B]/chunkveil verify[/B], then create [B]/chunkveil report public[/B]. If the state is TRIPPED, fix the incompatibility and restart; it cannot be reset in-process.
 
 [SIZE=5][B]Update Notifications[/B][/SIZE]
 

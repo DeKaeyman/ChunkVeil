@@ -369,7 +369,8 @@ final class VeilEngine {
                 state == null ? 0 : state.hiddenEntityCount(),
                 state == null ? 0L : state.lastViewRevealRefreshMillis(),
                 currentChunkState,
-                state == null ? 0 : state.appliedChunkCount()
+                state == null ? 0 : state.appliedChunkCount(),
+                state == null ? -1L : state.oldestEntityValidationAgeMillis()
         );
     }
 
@@ -384,7 +385,8 @@ final class VeilEngine {
             int hiddenEntityCount,
             long lastViewRevealRefreshMillis,
             String currentChunkState,
-            int appliedChunkCount
+            int appliedChunkCount,
+            long oldestEntityValidationAgeMillis
     ) {
         long lastViewRevealAgeMillis() {
             if (lastViewRevealRefreshMillis <= 0L) {
@@ -417,6 +419,9 @@ final class VeilEngine {
                     candidates, state.entityScanCursor(), settings.entityScanMaxEntitiesPerPlayer());
             state.entityScanCursor(selection.nextCursor());
             metrics.recordEntityScanCandidates(selection.items().size(), selection.deferred());
+            state.recordEntityValidationCandidates(
+                    candidates.stream().map(Entity::getUniqueId).toList(),
+                    selection.items().stream().map(Entity::getUniqueId).toList());
             for (Entity entity : selection.items()) {
                 if (shouldHideEntity(viewer, entity)) {
                     markEntityHidden(viewer, entity);
@@ -432,6 +437,7 @@ final class VeilEngine {
             for (UUID uuid : hiddenUuids.toArray(UUID[]::new)) {
                 Entity entity = Bukkit.getEntity(uuid);
                 if (entity == null) {
+                    state.forgetEntity(uuid);
                     continue;
                 }
                 if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {

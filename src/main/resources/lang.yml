@@ -26,7 +26,7 @@ commands:
     status: "/{label} status"
     verify: "/{label} verify"
     inspect: "/{label} inspect <player>"
-    report: "/{label} report"
+    report: "/{label} report <public|full>"
     predict: "/{label} predict <players> <ramGb> <cpuTier> [viewDistance]"
     update: "/{label} update"
     reload: "/{label} reload [--check]"
@@ -147,6 +147,7 @@ commands:
     already: "Runtime is already enabled."
     done: "Runtime enabled."
     failed: "&cRuntime could not be enabled: {reason}"
+    security-trip: "&cCannot re-enable after a security trip. Fix the incompatibility and restart the server; quarantine remains active until then."
 
   debug:
     usage: "Usage: &f/chunkveil debug <on|off>"

@@ -31,7 +31,7 @@ for _ in $(seq 1 180); do
 done
 
 if [[ "$ready" == true ]]; then
-  printf 'chunkveil verify\n' >&3
+  printf 'chunkveil verify --ci\n' >&3
   sleep 3
   printf 'stop\n' >&3
 fi
@@ -46,6 +46,7 @@ cat "$work/server.log"
 test "$ready" == true
 grep -q 'ProtocolLib chunk listener enabled' "$work/server.log"
 grep -q 'ChunkVeil enabled for worlds' "$work/server.log"
+grep -q 'CHUNKVEIL_VERIFY=PASS' "$work/server.log"
 if grep -Eq 'ChunkVeil security state TRIPPED|Strict startup policy is stopping|Error occurred while enabling ChunkVeil' "$work/server.log"; then
   exit 1
 fi

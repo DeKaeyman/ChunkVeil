@@ -11,6 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class LightPacketSanitizerTest {
     @Test
+    void rejectsUnexpectedLightArrayLength() {
+        BitSet mask = bits(1);
+        assertThrows(IllegalArgumentException.class, () -> LightPacketSanitizer.sanitize(
+                mask, new ArrayList<>(List.of(new byte[1])), new BitSet(), new ArrayList<>(), -64, 0));
+    }
+
+    @Test
     void darkensSkyAndBlockLightInFullyHiddenSections() {
         BitSet mask = bits(1, 2, 3, 4, 5);
         List<byte[]> sky = updates(5, (byte) 0x7F);

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Security trips can no longer be cleared with `/enable` or `/reload`; quarantine persists until restart. Runtime trip policy is configurable as `QUARANTINE`, `KICK_PLAYERS`, or `STOP_SERVER`.
+- Packet health now separates `OBSERVED` decoding from `ENFORCED` concealment, while `/verify` separates readiness from evidence and offers a machine-readable `--ci` verdict required by compatibility boots.
+- Fixed stale hidden-entity UUID/ID mappings and entity-ID reuse, added missing-entity cleanup and oldest-validation-age diagnostics, and added lifecycle regression tests.
+- Light updates now require readable wrappers and exact 2,048-byte arrays. Unexpected structures fail closed instead of being recorded as successful.
+- Added public/full diagnostic report modes and narrowed vibration documentation to origin filtering until destination payloads are validated manually.
 - Expanded `/chunkveil report` with a configuration checksum, enabled plugin versions, per-path packet health and timestamps, critical-failure context, and anonymized player rows that omit names, addresses, and coordinates.
 - Clarified `/chunkveil predict` as an experimental current-workload estimate, documented its assumptions, lowered its confidence wording, and fixed an optimistic entity-scan activity discount.
 - Centralized build, compatibility, pinned artifact, and release data in `release-metadata.json`; Gradle and the CI boot matrix now consume it, and `update.json` has a generation task.
@@ -28,7 +33,7 @@ Verification release: automated packet regression tests, `/chunkveil verify`, an
 - Added `/chunkveil verify`: one owner-facing PASS/WARN/FAIL check covering ProtocolLib, runtime protection, the chunk rewrite path, critical failures since startup, verified vs expected Minecraft versions, per-world protection summary, secondary packet protection, other packet-modifying plugins, and config validation. `/chunkveil compat` is now an alias for it, and the `chunkveil.compat` permission was renamed to `chunkveil.verify`.
 - Added `/chunkveil reload --check`: validates `config.yml` from disk, including YAML syntax errors, without applying anything.
 - Added a public `com.dekaeyman.chunkveil.api.VeilProtectionStatusEvent`, fired when protection enables, is disabled by an admin, or fails closed. Monitoring plugins can now track "actually protected" instead of "plugin loaded".
-- ChunkVeil now remembers the last critical packet failure since startup and surfaces it in `/chunkveil verify` even after protection is re-enabled.
+- ChunkVeil remembers the last critical packet failure since startup; security trips now require a restart and cannot be cleared in-process.
 - When runtime protection is inactive, ChunkVeil now shows a console banner on shutdown/refusal, logs a rate-limited reminder every 30 minutes, and warns admins in-game on join.
 - Language files fall back to the embedded defaults for messages missing from an older `lang.yml`.
 - Documented exact packet coverage and known boundaries in `docs/COVERAGE.md`.

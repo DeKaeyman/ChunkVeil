@@ -149,6 +149,7 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 ```yaml
 security:
   stop-server-on-startup-failure: true
+  runtime-trip-action: QUARANTINE
 
 worlds:
   world:
@@ -239,10 +240,13 @@ Vertical spread of each horizontal ray direction.
 How many solid occluding blocks a ray may pass through before stopping. `0` is strict line-of-sight; `2` reduces visible pop-in.
 
 `packet-protection`
-Cancels secondary packets (explosions, world events, block-crack animations, positional sounds, particles, and vibrations) that originate inside hidden underground zones. It also replaces light arrays for fully concealed sections with darkness. These only affect what the watching client receives, never the server world.
+Cancels secondary packets (explosions, world events, block-crack animations, positional sounds, particles, and vibration origins) that originate inside hidden underground zones. Vibration payload destinations remain under cross-version validation. It also replaces light arrays for fully concealed sections with darkness.
 
 `security.stop-server-on-startup-failure`
-When `true` (the default), ChunkVeil stops the server during boot if mandatory protection cannot initialize. It never stops the server for a runtime packet failure; runtime failures quarantine protected traffic instead.
+When `true` (the default), ChunkVeil stops the server during boot if mandatory protection cannot initialize. Runtime failures always quarantine protected traffic and then follow `runtime-trip-action`.
+
+`security.runtime-trip-action`
+Controls the operational response after a runtime security trip: `QUARANTINE` (default), `KICK_PLAYERS` in protected worlds, or `STOP_SERVER`. Every mode retains packet quarantine and never restores real chunks.
 
 ## Compatibility With Anti-Xray
 
@@ -258,13 +262,15 @@ When another plugin also rewrites the same chunk, block-change, or multi-block-c
 Shows config state, packet rewrite status, tracked players, queued chunks, and metrics.
 
 `/chunkveil verify`
-One PASS/WARN/FAIL verification of the whole protection state. It distinguishes a listener that is merely **INITIALIZED** from packet paths **EXERCISED** successfully on this running server, reports a `TRIPPED` quarantine, and shows category health for terrain, block data, entities, effects/game events, sounds, and lighting. It also checks versions, worlds, packet modifiers, and configuration. `/chunkveil compat` is an alias.
+Reports **Protection readiness** separately from **Runtime evidence**. Paths distinguish **INITIALIZED**, **OBSERVED** (decoded/evaluated), **ENFORCED** (concealment applied), and **FAILED**. `/chunkveil verify --ci` emits a machine-readable safe-initialization verdict; `/chunkveil compat` remains an alias.
 
 `/chunkveil inspect <player>`
 Shows a player's current ChunkVeil state: visible chunks, queued updates, hidden entities, view distance, and bypass state.
 
 `/chunkveil report`
 Creates a sanitized diagnostic report under `plugins/ChunkVeil/reports/` with versions, a configuration checksum, protected-world settings, per-packet-path health, counters, timings, plugin-stack versions, and anonymized runtime state. It omits player names, addresses, and coordinates.
+
+Use `/chunkveil report public` before sharing publicly; it hashes world names and omits unrelated plugin names. `/chunkveil report full` retains private-support detail and should be reviewed before sharing.
 
 `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]`
 Produces an **experimental current-workload estimate** from live average timings and fixed activity assumptions. It is useful for comparing settings, but it is not a benchmark or guaranteed player-capacity figure; test representative peak activity before sizing a production server.
@@ -282,7 +288,7 @@ Forces a refresh for all online players.
 Emergency switch. Stops packet/listener processing, shows hidden entities again, and refreshes sent chunks back to real world data for online players.
 
 `/chunkveil enable`
-Starts the runtime again after `/chunkveil disable`.
+Starts the runtime only after an intentional `/chunkveil disable`. A security trip cannot be reset in-process; fix the incompatibility and restart the server.
 
 `/chunkveil debug on`
 Logs a compact metrics summary every 30 seconds.

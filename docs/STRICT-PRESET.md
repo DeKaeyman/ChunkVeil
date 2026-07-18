@@ -5,6 +5,7 @@ Use this posture when preventing underground disclosure matters more than visual
 ```yaml
 security:
   stop-server-on-startup-failure: true
+  runtime-trip-action: STOP_SERVER
 
 worlds:
   world:

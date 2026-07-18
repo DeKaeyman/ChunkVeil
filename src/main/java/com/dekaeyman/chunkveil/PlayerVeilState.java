@@ -16,6 +16,8 @@ final class PlayerVeilState {
     private final Set<Integer> hiddenEntityIds = ConcurrentHashMap.newKeySet();
     private final Set<UUID> hiddenEntityUuids = ConcurrentHashMap.newKeySet();
     private final Map<Integer, UUID> hiddenEntityUuidsById = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> hiddenEntityIdsByUuid = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> entityLastValidatedMillis = new ConcurrentHashMap<>();
     private final Set<ChunkKey> visibleChunks = ConcurrentHashMap.newKeySet();
     private volatile long lastViewRevealRefreshMillis;
     private volatile long lastEntityScanMillis;
@@ -84,9 +86,24 @@ final class PlayerVeilState {
 
     void markEntityHidden(int entityId, UUID uuid) {
         hiddenEntityIds.add(entityId);
-        if (uuid != null) {
+        if (uuid == null) {
+            UUID previousUuid = hiddenEntityUuidsById.remove(entityId);
+            if (previousUuid != null) {
+                hiddenEntityUuids.remove(previousUuid);
+                hiddenEntityIdsByUuid.remove(previousUuid);
+            }
+        } else {
+            UUID previousUuid = hiddenEntityUuidsById.put(entityId, uuid);
+            if (previousUuid != null && !previousUuid.equals(uuid)) {
+                hiddenEntityUuids.remove(previousUuid);
+                hiddenEntityIdsByUuid.remove(previousUuid);
+            }
+            Integer previousId = hiddenEntityIdsByUuid.put(uuid, entityId);
+            if (previousId != null && previousId != entityId) {
+                hiddenEntityIds.remove(previousId);
+                hiddenEntityUuidsById.remove(previousId);
+            }
             hiddenEntityUuids.add(uuid);
-            hiddenEntityUuidsById.put(entityId, uuid);
         }
     }
 
@@ -99,7 +116,33 @@ final class PlayerVeilState {
         UUID uuid = hiddenEntityUuidsById.remove(entityId);
         if (uuid != null) {
             hiddenEntityUuids.remove(uuid);
+            hiddenEntityIdsByUuid.remove(uuid);
         }
+    }
+
+    void forgetEntity(UUID uuid) {
+        hiddenEntityUuids.remove(uuid);
+        Integer entityId = hiddenEntityIdsByUuid.remove(uuid);
+        if (entityId != null) {
+            hiddenEntityIds.remove(entityId);
+            hiddenEntityUuidsById.remove(entityId, uuid);
+        }
+        entityLastValidatedMillis.remove(uuid);
+    }
+
+    void recordEntityValidationCandidates(Iterable<UUID> candidates, Iterable<UUID> validated) {
+        Set<UUID> current = new HashSet<>();
+        for (UUID uuid : candidates) current.add(uuid);
+        entityLastValidatedMillis.keySet().retainAll(current);
+        long now = System.currentTimeMillis();
+        for (UUID uuid : current) entityLastValidatedMillis.putIfAbsent(uuid, now);
+        for (UUID uuid : validated) entityLastValidatedMillis.put(uuid, now);
+    }
+
+    long oldestEntityValidationAgeMillis() {
+        long oldest = Long.MAX_VALUE;
+        for (long timestamp : entityLastValidatedMillis.values()) oldest = Math.min(oldest, timestamp);
+        return oldest == Long.MAX_VALUE ? -1L : Math.max(0L, System.currentTimeMillis() - oldest);
     }
 
     Set<UUID> hiddenEntityUuids() {
@@ -214,6 +257,8 @@ final class PlayerVeilState {
         hiddenEntityIds.clear();
         hiddenEntityUuids.clear();
         hiddenEntityUuidsById.clear();
+        hiddenEntityIdsByUuid.clear();
+        entityLastValidatedMillis.clear();
     }
 
     void clear() {

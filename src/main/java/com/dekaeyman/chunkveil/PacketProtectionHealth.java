@@ -5,22 +5,21 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
-/** Runtime evidence for each protected packet surface. */
+/** Separates successful decoding from actual concealment enforcement. */
 final class PacketProtectionHealth {
-    enum Status {
-        INITIALIZED,
-        EXERCISED,
-        FAILED,
-        PARTIAL,
-        DISABLED
-    }
+    enum Status { INITIALIZED, OBSERVED, ENFORCED, FAILED, PARTIAL, DISABLED }
 
-    record Snapshot(Status status, long successes, long lastSuccessMillis, long lastFailureMillis, String failure) {
+    record Snapshot(Status status, long observed, long enforced, long lastObservedMillis,
+                    long lastEnforcedMillis, long lastFailureMillis, String failure) {
+        long successes() { return enforced; }
+        long lastSuccessMillis() { return lastEnforcedMillis; }
     }
 
     private static final class Channel {
-        private final LongAdder successes = new LongAdder();
-        private final AtomicLong lastSuccessMillis = new AtomicLong();
+        private final LongAdder observed = new LongAdder();
+        private final LongAdder enforced = new LongAdder();
+        private final AtomicLong lastObservedMillis = new AtomicLong();
+        private final AtomicLong lastEnforcedMillis = new AtomicLong();
         private final AtomicLong lastFailureMillis = new AtomicLong();
         private volatile String failure;
     }
@@ -34,10 +33,16 @@ final class PacketProtectionHealth {
         }
     }
 
-    void exercised(PacketSecurityState.ProtectedPath path) {
+    void observed(PacketSecurityState.ProtectedPath path) {
         Channel channel = channels.get(path);
-        channel.successes.increment();
-        channel.lastSuccessMillis.set(System.currentTimeMillis());
+        channel.observed.increment();
+        channel.lastObservedMillis.set(System.currentTimeMillis());
+    }
+
+    void enforced(PacketSecurityState.ProtectedPath path) {
+        Channel channel = channels.get(path);
+        channel.enforced.increment();
+        channel.lastEnforcedMillis.set(System.currentTimeMillis());
     }
 
     void failed(PacketSecurityState.ProtectedPath path, String reason) {
@@ -48,36 +53,40 @@ final class PacketProtectionHealth {
 
     Snapshot snapshot(PacketSecurityState.ProtectedPath path) {
         Channel channel = channels.get(path);
-        Status status = channel.failure != null
-                ? Status.FAILED
-                : channel.successes.sum() > 0 ? Status.EXERCISED : Status.INITIALIZED;
-        return new Snapshot(status, channel.successes.sum(), channel.lastSuccessMillis.get(),
-                channel.lastFailureMillis.get(), channel.failure);
+        long observed = channel.observed.sum();
+        long enforced = channel.enforced.sum();
+        Status status = channel.failure != null ? Status.FAILED
+                : enforced > 0 ? Status.ENFORCED : observed > 0 ? Status.OBSERVED : Status.INITIALIZED;
+        return new Snapshot(status, observed, enforced, channel.lastObservedMillis.get(),
+                channel.lastEnforcedMillis.get(), channel.lastFailureMillis.get(), channel.failure);
     }
 
     Snapshot summarize(PacketSecurityState.ProtectedPath... paths) {
         if (paths == null || paths.length == 0) {
-            return new Snapshot(Status.DISABLED, 0L, 0L, 0L, null);
+            return new Snapshot(Status.DISABLED, 0, 0, 0, 0, 0, null);
         }
-        long successes = 0L;
-        long lastSuccess = 0L;
-        long lastFailure = 0L;
+        long observed = 0, enforced = 0, lastObserved = 0, lastEnforced = 0, lastFailure = 0;
+        int initialized = 0, observedOnly = 0, enforcedPaths = 0;
         String failure = null;
-        int exercised = 0;
         for (PacketSecurityState.ProtectedPath path : paths) {
             Snapshot snapshot = snapshot(path);
-            successes += snapshot.successes();
-            lastSuccess = Math.max(lastSuccess, snapshot.lastSuccessMillis());
+            observed += snapshot.observed();
+            enforced += snapshot.enforced();
+            lastObserved = Math.max(lastObserved, snapshot.lastObservedMillis());
+            lastEnforced = Math.max(lastEnforced, snapshot.lastEnforcedMillis());
             lastFailure = Math.max(lastFailure, snapshot.lastFailureMillis());
-            if (snapshot.status() == Status.FAILED) {
-                failure = path + ": " + snapshot.failure();
-            } else if (snapshot.status() == Status.EXERCISED) {
-                exercised++;
+            switch (snapshot.status()) {
+                case FAILED -> failure = path + ": " + snapshot.failure();
+                case ENFORCED -> enforcedPaths++;
+                case OBSERVED -> observedOnly++;
+                case INITIALIZED -> initialized++;
+                default -> { }
             }
         }
         Status status = failure != null ? Status.FAILED
-                : exercised == 0 ? Status.INITIALIZED
-                : exercised == paths.length ? Status.EXERCISED : Status.PARTIAL;
-        return new Snapshot(status, successes, lastSuccess, lastFailure, failure);
+                : enforcedPaths == paths.length ? Status.ENFORCED
+                : initialized == paths.length ? Status.INITIALIZED
+                : observedOnly == paths.length ? Status.OBSERVED : Status.PARTIAL;
+        return new Snapshot(status, observed, enforced, lastObserved, lastEnforced, lastFailure, failure);
     }
 }

@@ -11,7 +11,7 @@ It lists every information path ChunkVeil knows about, whether it is protected, 
 - **Not audited** — not yet analyzed in depth; treat as unprotected until this table says otherwise.
 - **Documented gap** — intentionally not covered; the trade-off is documented.
 
-At runtime, `/chunkveil verify` separately reports whether each enabled category is merely **INITIALIZED**, has been **EXERCISED** successfully by real packets, is **PARTIAL**, or has **FAILED** and tripped quarantine.
+At runtime, `/chunkveil verify` separates protection readiness from evidence. Each path is **INITIALIZED**, **OBSERVED** (decoded and evaluated), **ENFORCED** (concealment actually applied), **PARTIAL**, **FAILED**, or **DISABLED**.
 
 ## Chunk data (the critical path)
 
@@ -56,7 +56,7 @@ At runtime, `/chunkveil verify` separately reports whether each enabled category
 | Block break animations | Yes | `packet-protection.cancel-block-crack: true` (default) | Manual |
 | Positional sound packets | Yes | `packet-protection.cancel-positional-sounds: true` (default) | Manual |
 | Particle packets | Yes | `packet-protection.cancel-particles: true` (default), concealed source position | Manual |
-| Sculk vibration particles | Yes | Covered by particle filtering on modern versions | Manual |
+| Sculk vibration particle origins | Partial | Concealed origins are filtered; payload destinations and entity targets still require cross-version validation | Manual |
 | Legacy vibration packets | Yes | `packet-protection.cancel-vibrations: true` (default), when exposed by ProtocolLib | Manual |
 | Block and sky light arrays | Yes for fully concealed sections | `packet-protection.sanitize-light: true` (default) | Automated transformation + Manual packet path |
 

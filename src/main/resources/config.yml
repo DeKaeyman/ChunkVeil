@@ -23,6 +23,9 @@ security:
   # Stop the whole server if ChunkVeil cannot initialize protection during
   # boot (for example because ProtocolLib is missing or incompatible).
   stop-server-on-startup-failure: true
+  # QUARANTINE keeps protected packets blocked, KICK_PLAYERS disconnects
+  # players in protected worlds, and STOP_SERVER shuts down cleanly.
+  runtime-trip-action: QUARANTINE
 
 worlds:
   world:

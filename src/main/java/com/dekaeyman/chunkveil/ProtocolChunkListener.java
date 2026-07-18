@@ -214,9 +214,10 @@ final class ProtocolChunkListener {
                     stripHiddenBlockEntities(event, settings.hideBelowY(player.getWorld()));
                     if (settings.sanitizeLightInHiddenZones()) {
                         sanitizeLightData(event, player.getWorld());
-                        protectionHealth.exercised(PacketSecurityState.ProtectedPath.LIGHT);
+                        protectionHealth.observed(PacketSecurityState.ProtectedPath.LIGHT);
                     }
-                    protectionHealth.exercised(PacketSecurityState.ProtectedPath.CHUNK);
+                    protectionHealth.observed(PacketSecurityState.ProtectedPath.CHUNK);
+                    protectionHealth.enforced(PacketSecurityState.ProtectedPath.CHUNK);
                     lastChunkPacketFormat = sectionBlockCountIsLeInt ? "26.x little-endian count" : "1.21.x big-endian count";
                     lastChunkWorld = player.getWorld().getName();
                     metrics.countChunkPacket(true, true);
@@ -348,7 +349,7 @@ final class ProtocolChunkListener {
             }
 
             if (!hidden) {
-                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
+                protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
                 return;
             }
 
@@ -364,7 +365,8 @@ final class ProtocolChunkListener {
                     veilEngine.markEntityHidden(viewer, entityId, entityUuid);
                 }
             });
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
+            protectionHealth.enforced(PacketSecurityState.ProtectedPath.ENTITY_SPAWN);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect entity spawn packet", throwable);
             trip(event, PacketSecurityState.ProtectedPath.ENTITY_SPAWN, reason);
@@ -374,7 +376,7 @@ final class ProtocolChunkListener {
     private void cancelHiddenEntityPacket(PacketEvent event, VeilEngine veilEngine) {
         try {
             if (!packetContainsHiddenEntity(event, veilEngine)) {
-                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
+                protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
             }
 
@@ -383,13 +385,14 @@ final class ProtocolChunkListener {
                 for (int entityId : entityIdsInPacket(event)) {
                     Bukkit.getScheduler().runTask(plugin, () -> veilEngine.forgetEntity(viewer, entityId));
                 }
-                protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
+                protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
             }
 
             event.setCancelled(true);
             metrics.countEntityPacketCancelled();
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
+            protectionHealth.enforced(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect entity packet " + event.getPacketType(), throwable);
             trip(event, PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP, reason);
@@ -507,8 +510,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.getPacket().getBlockData().write(0, fakeBlockData(event.getPlayer().getWorld()));
                 metrics.countBlockChangeRewritten();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.BLOCK_CHANGE);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_CHANGE);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.BLOCK_CHANGE);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not rewrite block change packet", throwable);
             trip(event, PacketSecurityState.ProtectedPath.BLOCK_CHANGE, reason);
@@ -521,7 +525,7 @@ final class ProtocolChunkListener {
         }
 
         if (rewriteModernMultiBlockChange(event, veilEngine)) {
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             return;
         }
         rewriteLegacyMultiBlockChange(event, veilEngine);
@@ -550,8 +554,9 @@ final class ProtocolChunkListener {
             if (changed) {
                 event.getPacket().getBlockDataArrays().write(0, blockData);
                 metrics.countMultiBlockChangeRewritten();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             return true;
         } catch (Throwable throwable) {
             return false;
@@ -580,6 +585,7 @@ final class ProtocolChunkListener {
             if (changed) {
                 event.getPacket().getMultiBlockChangeInfoArrays().write(0, changes);
                 metrics.countMultiBlockChangeRewritten();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             }
         } catch (Throwable throwable) {
             if (multiBlockChangeRewriteBroken.compareAndSet(false, true)) {
@@ -598,8 +604,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countBlockEntityUpdateCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.BLOCK_ENTITY);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_ENTITY);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.BLOCK_ENTITY);
         } catch (Throwable throwable) {
             String reason = packetCompatibilityFailure("Could not inspect block entity update packet", throwable);
             trip(event, PacketSecurityState.ProtectedPath.BLOCK_ENTITY, reason);
@@ -618,8 +625,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                 event.setCancelled(true);
                 metrics.countExplosionPacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.EXPLOSION);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.EXPLOSION);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.EXPLOSION);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.EXPLOSION,
                     packetCompatibilityFailure("Could not inspect explosion packet", throwable));
@@ -635,8 +643,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countWorldEventPacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.WORLD_EVENT);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.WORLD_EVENT);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.WORLD_EVENT);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.WORLD_EVENT,
                     packetCompatibilityFailure("Could not inspect world event packet", throwable));
@@ -652,8 +661,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
                 event.setCancelled(true);
                 metrics.countBlockBreakAnimationPacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.BLOCK_CRACK);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.BLOCK_CRACK);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.BLOCK_CRACK);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.BLOCK_CRACK,
                     packetCompatibilityFailure("Could not inspect block crack packet", throwable));
@@ -675,8 +685,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                 event.setCancelled(true);
                 metrics.countSoundPacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.POSITIONAL_SOUND);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.POSITIONAL_SOUND,
                     packetCompatibilityFailure("Could not inspect positional sound packet", throwable));
@@ -692,8 +703,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), location.getBlockX(), location.getBlockY(), location.getBlockZ())) {
                 event.setCancelled(true);
                 metrics.countParticlePacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.PARTICLE);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.PARTICLE);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.PARTICLE);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.PARTICLE,
                     packetCompatibilityFailure("Could not inspect particle packet", throwable));
@@ -709,8 +721,9 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideBlock(event.getPlayer(), location.getBlockX(), location.getBlockY(), location.getBlockZ())) {
                 event.setCancelled(true);
                 metrics.countVibrationPacketCancelled();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.VIBRATION);
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.VIBRATION);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.VIBRATION);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.VIBRATION,
                     packetCompatibilityFailure("Could not inspect vibration packet", throwable));
@@ -741,7 +754,7 @@ final class ProtocolChunkListener {
             if (veilEngine.shouldHideChunk(event.getPlayer(), chunkX, chunkZ)) {
                 sanitizeLightData(event, event.getPlayer().getWorld());
             }
-            protectionHealth.exercised(PacketSecurityState.ProtectedPath.LIGHT);
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.LIGHT);
         } catch (Throwable throwable) {
             trip(event, PacketSecurityState.ProtectedPath.LIGHT,
                     packetCompatibilityFailure("Could not sanitize light update packet", throwable));
@@ -752,7 +765,7 @@ final class ProtocolChunkListener {
         try {
             WrappedLevelChunkData.LightData light = event.getPacket().getLightUpdateData().readSafely(0);
             if (light == null) {
-                return;
+                throw new IllegalArgumentException("packet exposes no readable light-data wrapper");
             }
             int changed = LightPacketSanitizer.sanitize(
                     light.getSkyYMask(),
@@ -765,6 +778,7 @@ final class ProtocolChunkListener {
             if (changed > 0) {
                 event.getPacket().getLightUpdateData().write(0, light);
                 metrics.countLightPacketSanitized();
+                protectionHealth.enforced(PacketSecurityState.ProtectedPath.LIGHT);
             }
         } catch (Throwable throwable) {
             throw new IllegalArgumentException("could not rewrite concealed light arrays", throwable);

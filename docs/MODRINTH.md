@@ -20,7 +20,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 - **Packet-level protection** - While protection is active, hidden chunk packets are rewritten before they are sent. A hidden chunk never leaves the server with real underground block data in it; a packet that cannot be rewritten safely is cancelled instead of sent.
 - **Block update protection** - Later block changes are also masked while a chunk is hidden.
 - **Block entity protection** - Hidden block entity update packets below the protected Y range are cancelled.
-- **Secondary leak protection** - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibrations, and sanitizes concealed light data.
+- **Secondary leak protection** - Cancels hidden underground explosions, world events, block cracks, sounds, particles, and vibration origins, and sanitizes concealed light data. Vibration destinations remain under validation.
 - **View-based reveals** - Uses a 360-degree visibility scan instead of revealing everything in a simple radius.
 - **Adaptive scan quality** - Optional TPS-aware ray reduction helps busy servers keep tick time predictable.
 - **Per-world config** - Configure fake blocks, hidden Y ranges, air hiding, entity hiding, and player hiding per world.
@@ -130,15 +130,15 @@ worlds:
 ## Commands
 
 - `/chunkveil status` - Shows runtime state, worlds, queue size, rewrite status, and metrics.
-- `/chunkveil verify` - One PASS/WARN/FAIL check that distinguishes INITIALIZED, EXERCISED, and TRIPPED protection and reports health by packet category. (`/chunkveil compat` is an alias.)
+- `/chunkveil verify` - Separates protection readiness from INITIALIZED, OBSERVED, ENFORCED, and FAILED runtime evidence. (`/chunkveil compat` is an alias.)
 - `/chunkveil inspect <player>` - Shows a player's current ChunkVeil state, visible chunks, queue count, view distance, and bypass state.
-- `/chunkveil report` - Creates a sanitized report with versions, config checksum, packet health, timings, plugin stack, and anonymized runtime state.
+- `/chunkveil report public|full` - Creates either a public-safe report with hashed worlds or a detailed private-support report.
 - `/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]` - Experimental current-workload estimate from live timings; not a guaranteed player capacity.
 - `/chunkveil update` - Checks now whether a newer compatible release is available.
 - `/chunkveil reload` - Reloads config and language files. Add `--check` to validate the config from disk without applying it.
 - `/chunkveil refresh` - Forces a rescan and refresh for online players.
 - `/chunkveil disable` - Emergency switch that restores real chunks for online players.
-- `/chunkveil enable` - Starts the runtime again.
+- `/chunkveil enable` - Restarts only an intentionally admin-disabled runtime; security trips require a server restart.
 - `/chunkveil debug on|off` - Toggles debug metrics.
 - `/chunkveil version` - Shows the plugin version.
 

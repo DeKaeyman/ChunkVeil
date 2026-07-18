@@ -121,6 +121,11 @@ record VeilSettings(
         boolean cancelParticlesInHiddenZones = booleanValue(packetProtection, "cancel-particles", true);
         boolean cancelVibrationsInHiddenZones = booleanValue(packetProtection, "cancel-vibrations", true);
         boolean sanitizeLightInHiddenZones = booleanValue(packetProtection, "sanitize-light", true);
+        String runtimeTripAction = config.getString("security.runtime-trip-action", "QUARANTINE")
+                .trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("QUARANTINE", "KICK_PLAYERS", "STOP_SERVER").contains(runtimeTripAction)) {
+            validationWarnings.add("security.runtime-trip-action must be QUARANTINE, KICK_PLAYERS, or STOP_SERVER.");
+        }
         if (sanitizeLightInHiddenZones) {
             for (Map.Entry<String, VeilWorldSettings> entry : worlds.entrySet()) {
                 VeilWorldSettings worldSettings = entry.getValue();

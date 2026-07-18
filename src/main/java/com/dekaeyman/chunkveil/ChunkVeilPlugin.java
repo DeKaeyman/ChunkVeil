@@ -8,6 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 public final class ChunkVeilPlugin extends JavaPlugin {
+    enum RuntimeStopCause { NONE, ADMIN_DISABLED, STARTUP_FAILURE, SECURITY_TRIPPED }
     private VeilEngine veilEngine;
     private ProtocolChunkListener protocolChunkListener;
     private VeilListener veilListener;
@@ -23,6 +24,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
     private BukkitTask inactiveReminderTask;
     private String lastCriticalFailureReason;
     private long lastCriticalFailureAtMillis;
+    private RuntimeStopCause runtimeStopCause = RuntimeStopCause.NONE;
 
     private static final long INACTIVE_REMINDER_TICKS = 20L * 60L * 30L;
 
@@ -87,6 +89,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     private VeilRestoreResult disableVeilRuntime(String reason, VeilProtectionStatusEvent.Cause cause) {
         runtimeDisabledReason = reason;
+        runtimeStopCause = RuntimeStopCause.ADMIN_DISABLED;
         if (!veilRuntimeEnabled) {
             return new VeilRestoreResult(0, 0);
         }
@@ -116,6 +119,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         lastCriticalFailureReason = reason;
         lastCriticalFailureAtMillis = System.currentTimeMillis();
         runtimeDisabledReason = reason;
+        runtimeStopCause = RuntimeStopCause.SECURITY_TRIPPED;
         logProtectionInactiveBanner("ChunkVeil security state TRIPPED: " + reason);
         setDebugEnabled(false);
         unregisterVeilListener();
@@ -124,11 +128,30 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             veilEngine = null;
         }
         // Deliberately retain the tripped ProtocolLib listener. It continues
-        // cancelling every protected packet type until an explicit re-enable
-        // replaces it or the server restarts.
+        // cancelling every protected packet type until the server restarts.
         veilRuntimeEnabled = false;
         getLogger().severe("Protected packet traffic is quarantined. No real chunks were restored.");
+        applyRuntimeTripAction();
         fireProtectionStatusEvent(false, VeilProtectionStatusEvent.Cause.FAILED_CLOSED, reason);
+    }
+
+    private void applyRuntimeTripAction() {
+        String action = getConfig().getString("security.runtime-trip-action", "QUARANTINE")
+                .trim().toUpperCase(java.util.Locale.ROOT);
+        switch (action) {
+            case "STOP_SERVER" -> Bukkit.getScheduler().runTask(this, Bukkit::shutdown);
+            case "KICK_PLAYERS" -> Bukkit.getScheduler().runTask(this, () -> {
+                for (org.bukkit.entity.Player player : Bukkit.getOnlinePlayers()) {
+                    if (settings != null && settings.isEnabledWorld(player.getWorld())) {
+                        player.kick(net.kyori.adventure.text.Component.text(
+                                "ChunkVeil protection failed closed. Please reconnect after the server owner fixes the issue."));
+                    }
+                }
+            });
+            case "QUARANTINE" -> { }
+            default -> getLogger().severe("Unknown security.runtime-trip-action '" + action
+                    + "'; retaining QUARANTINE behavior.");
+        }
     }
 
     private void logProtectionInactiveBanner(String headline) {
@@ -148,11 +171,19 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getLogger().severe("============================================================");
     }
 
-    void enableVeilRuntime() {
+    boolean enableVeilRuntime() {
         if (veilRuntimeEnabled) {
-            return;
+            return true;
+        }
+        if (runtimeStopCause != RuntimeStopCause.ADMIN_DISABLED) {
+            return false;
         }
         startVeil(false);
+        return veilRuntimeEnabled;
+    }
+
+    RuntimeStopCause runtimeStopCause() {
+        return runtimeStopCause;
     }
 
     VeilEngine veilEngine() {
@@ -208,7 +239,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     PacketProtectionHealth.Snapshot packetHealth(PacketSecurityState.ProtectedPath... paths) {
         return protocolChunkListener == null
-                ? new PacketProtectionHealth.Snapshot(PacketProtectionHealth.Status.DISABLED, 0L, 0L, 0L, null)
+                ? new PacketProtectionHealth.Snapshot(PacketProtectionHealth.Status.DISABLED, 0L, 0L, 0L, 0L, 0L, null)
                 : protocolChunkListener.health(paths);
     }
 
@@ -259,6 +290,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             this.veilListener = new VeilListener(veilEngine);
             getServer().getPluginManager().registerEvents(veilListener, this);
             runtimeDisabledReason = null;
+            runtimeStopCause = RuntimeStopCause.NONE;
             veilRuntimeEnabled = true;
             getLogger().info("ChunkVeil enabled for worlds " + settings.enabledWorlds());
             fireProtectionStatusEvent(true, VeilProtectionStatusEvent.Cause.ENABLED, "");
@@ -266,6 +298,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             String failure = exception.getClass().getSimpleName()
                     + (exception.getMessage() == null ? "" : ": " + exception.getMessage());
             runtimeDisabledReason = failure;
+            runtimeStopCause = RuntimeStopCause.STARTUP_FAILURE;
             logProtectionInactiveBanner("ChunkVeil refused to enable runtime protection: " + failure);
             stopVeil();
             if (initialBoot && getConfig().getBoolean("security.stop-server-on-startup-failure", true)) {

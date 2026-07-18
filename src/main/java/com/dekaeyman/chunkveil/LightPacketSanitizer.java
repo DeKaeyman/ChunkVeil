@@ -5,6 +5,7 @@ import java.util.List;
 
 /** Replaces light arrays for fully concealed sections with darkness. */
 final class LightPacketSanitizer {
+    static final int LIGHT_ARRAY_BYTES = 2048;
     private LightPacketSanitizer() {
     }
 
@@ -38,8 +39,12 @@ final class LightPacketSanitizer {
             int sectionY = minSection + lightIndex - 1;
             int sectionMaxYExclusive = (sectionY + 1) * 16;
             byte[] update = updates.get(updateIndex);
-            if (sectionMaxYExclusive <= hideBelowY && update != null && containsLight(update)) {
-                updates.set(updateIndex, new byte[update.length]);
+            if (update == null || update.length != LIGHT_ARRAY_BYTES) {
+                throw new IllegalArgumentException("Light update array must contain exactly "
+                        + LIGHT_ARRAY_BYTES + " bytes");
+            }
+            if (sectionMaxYExclusive <= hideBelowY && containsLight(update)) {
+                updates.set(updateIndex, new byte[LIGHT_ARRAY_BYTES]);
                 changed++;
             }
             updateIndex++;
