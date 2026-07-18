@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0
+
+First stable release. Promotes the multi-player-tested `1.0.0-rc.1` code without functional changes after continued error-free server use on Paper 1.21.8, 1.21.11, 26.1.2, and 26.2.
+
 ## 1.0.0-rc.1
 
 First 1.0 release candidate. Manually gameplay-tested with multiple players on Paper 1.21.8, 1.21.11, 26.1.2, and 26.2 in addition to the automated test and boot matrix.
