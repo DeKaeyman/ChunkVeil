@@ -35,7 +35,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 ![Requirements](https://raw.githubusercontent.com/DeKaeyman/ChunkVeil/main/docs/assets/simple/banner-2.png)
 
 - Paper 1.21.x or 26.x
-- Java 21 or newer (Paper 26.x itself requires Java 25)
+- Java 21 or newer; Java 25 is required for Paper 26.x and the currently pinned ProtocolLib development build
 - ProtocolLib compatible with your Paper/Minecraft version
 
 ProtocolLib version matters. Pick the build that matches your server version:
@@ -48,7 +48,7 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Server | ProtocolLib | Java | Status |
 | --- | --- | --- | --- |
 | Paper 26.1.2 | newest dev build for 26.1 | 25 | Verified (ChunkVeil 0.5.0) |
-| Paper 1.21.11 | newest build for 1.21.11 | 21+ | Verified (ChunkVeil 0.5.0) |
+| Paper 1.21.11 | newest build for 1.21.11 | 21+ historically; current dev build requires 25 | Verified (ChunkVeil 0.5.0) |
 | Paper 1.21.8 | 5.4.0 | 21+ | Verified (ChunkVeil 0.5.0) |
 | Paper 26.2 | matching ProtocolLib development build | 25 | Expected, not manually verified |
 
@@ -105,7 +105,7 @@ For the strictest protection, test your exact plugin stack with `/chunkveil stat
 ## Installation
 
 1. Install Paper 1.21.x or 26.x.
-2. Install Java 21 or newer (Java 25 for Paper 26.x).
+2. Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
 3. Install a ProtocolLib build compatible with your Paper version.
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
 5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`.

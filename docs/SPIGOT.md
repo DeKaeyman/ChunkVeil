@@ -41,7 +41,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 
 [LIST]
 [*][B]Paper[/B] 1.21.x or 26.x
-[*][B]Java[/B] 21 or newer (Paper 26.x itself requires Java 25)
+[*][B]Java[/B] 21 or newer; Java 25 is required for Paper 26.x and the currently pinned ProtocolLib development build
 [*][B]ProtocolLib[/B] compatible with your Paper/Minecraft version
 [/LIST]
 
@@ -61,7 +61,7 @@ ChunkVeil ships as a single universal jar.
 [B]Verified with ChunkVeil 0.5.0[/B] (this exact combination was run on a real server):
 [LIST]
 [*]Paper 26.1.2 + newest ProtocolLib dev build for 26.1 + Java 25
-[*]Paper 1.21.11 + newest ProtocolLib build for 1.21.11 + Java 21+
+[*]Paper 1.21.11 + newest ProtocolLib build for 1.21.11 + Java 21+ historically (the current dev build requires Java 25)
 [*]Paper 1.21.8 + ProtocolLib 5.4.0 + Java 21+
 [/LIST]
 
@@ -126,7 +126,7 @@ For the strictest protection, test your exact plugin stack with /chunkveil statu
 
 [LIST=1]
 [*]Install Paper 1.21.x or 26.x.
-[*]Install Java 21 or newer (Java 25 for Paper 26.x).
+[*]Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
 [*]Install ProtocolLib compatible with your Paper version: [URL]https://www.spigotmc.org/resources/protocollib.1997/[/URL]
 [*]Put ChunkVeil in your server's plugins folder.
 [*]Start the server once to generate config.yml and lang.yml.

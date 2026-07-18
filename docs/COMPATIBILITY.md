@@ -12,7 +12,7 @@ Boot success proves initialization compatibility. It does not claim that every p
 | Paper artifact | ProtocolLib artifact | Java | Current evidence |
 | --- | --- | --- | --- |
 | 1.21.8 build 60 | 5.4.0 stable | 21 | Pending CI boot |
-| 1.21.11 build 132 | dev asset updated 2026-07-13 | 21 | Pending CI boot |
+| 1.21.11 build 132 | dev asset updated 2026-07-13 | 25 | Pending CI boot |
 | 26.1.2 build 74 | dev asset updated 2026-07-13 | 25 | Pending CI boot |
 | 26.2 build 62 | dev asset updated 2026-07-13 | 25 | Pending CI boot |
 
