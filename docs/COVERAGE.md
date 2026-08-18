@@ -51,7 +51,7 @@ At runtime, `/chunkveil verify` separates protection readiness from evidence. Ea
 
 | Information path | Covered | Conditions | Verification |
 | --- | --- | --- | --- |
-| Explosion packets | Yes | `packet-protection.cancel-explosions: true` (default) | Manual |
+| Explosion packets | Yes | `packet-protection.cancel-explosions: true` (default) | Manual + unit (center decoding for the 1.21.2+ vector and legacy double layouts) |
 | World event packets | Yes | `packet-protection.cancel-world-events: true` (default) | Manual |
 | Block break animations | Yes | `packet-protection.cancel-block-crack: true` (default) | Manual |
 | Positional sound packets | Yes | `packet-protection.cancel-positional-sounds: true` (default) | Manual |

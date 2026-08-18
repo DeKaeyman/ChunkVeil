@@ -54,4 +54,24 @@ class PacketCoordinatesTest {
         assertEquals(new PacketCoordinates.BlockCoordinate(-11, -21, -31),
                 PacketCoordinates.floored(-10.001, -20.5, -30.999));
     }
+
+    @Test void resolvesModernExplosionCenterFromVector() {
+        assertEquals(new PacketCoordinates.BlockCoordinate(10, -21, 30),
+                PacketCoordinates.explosionCenter(new org.bukkit.util.Vector(10.5, -20.001, 30.999), null, null, null));
+    }
+
+    @Test void prefersVectorOverLegacyDoublesForExplosionCenter() {
+        assertEquals(new PacketCoordinates.BlockCoordinate(1, 2, 3),
+                PacketCoordinates.explosionCenter(new org.bukkit.util.Vector(1.0, 2.0, 3.0), 7.0, 8.0, 9.0));
+    }
+
+    @Test void resolvesLegacyExplosionCenterFromDoubles() {
+        assertEquals(new PacketCoordinates.BlockCoordinate(-11, 20, 30),
+                PacketCoordinates.explosionCenter(null, -10.001, 20.5, 30.999));
+    }
+
+    @Test void reportsUnreadableExplosionCenterAsNull() {
+        assertEquals(null, PacketCoordinates.explosionCenter(null, null, null, null));
+        assertEquals(null, PacketCoordinates.explosionCenter(null, 1.0, null, 3.0));
+    }
 }

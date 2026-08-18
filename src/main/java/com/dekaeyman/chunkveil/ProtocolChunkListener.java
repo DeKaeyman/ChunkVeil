@@ -615,13 +615,17 @@ final class ProtocolChunkListener {
 
     private void cancelHiddenExplosion(PacketEvent event, VeilEngine veilEngine) {
         try {
-            Double centerX = event.getPacket().getDoubles().readSafely(0);
-            Double centerY = event.getPacket().getDoubles().readSafely(1);
-            Double centerZ = event.getPacket().getDoubles().readSafely(2);
-            if (centerX == null || centerY == null || centerZ == null) {
+            // The explosion center is the packet's only Vec3 field on 1.21.2+,
+            // so vector index 0 is unambiguous there; the doubles fallback
+            // covers the flattened pre-1.21.2 layout.
+            PacketCoordinates.BlockCoordinate block = PacketCoordinates.explosionCenter(
+                    event.getPacket().getVectors().readSafely(0),
+                    event.getPacket().getDoubles().readSafely(0),
+                    event.getPacket().getDoubles().readSafely(1),
+                    event.getPacket().getDoubles().readSafely(2));
+            if (block == null) {
                 throw new IllegalArgumentException("explosion packet has no readable center");
             }
-            PacketCoordinates.BlockCoordinate block = PacketCoordinates.floored(centerX, centerY, centerZ);
             if (veilEngine.shouldHideBlock(event.getPlayer(), block.x(), block.y(), block.z())) {
                 event.setCancelled(true);
                 metrics.countExplosionPacketCancelled();

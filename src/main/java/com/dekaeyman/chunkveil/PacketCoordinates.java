@@ -21,6 +21,19 @@ final class PacketCoordinates {
         return new BlockCoordinate((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
     }
 
+    // Minecraft 1.21.2+ sends the explosion center as a single Vec3 field,
+    // while 1.21 and 1.21.1 send three top-level doubles. Either source may
+    // be absent depending on server version; null means neither was readable.
+    static BlockCoordinate explosionCenter(org.bukkit.util.Vector center, Double x, Double y, Double z) {
+        if (center != null) {
+            return floored(center.getX(), center.getY(), center.getZ());
+        }
+        if (x == null || y == null || z == null) {
+            return null;
+        }
+        return floored(x, y, z);
+    }
+
     record BlockCoordinate(int x, int y, int z) {
     }
 }
