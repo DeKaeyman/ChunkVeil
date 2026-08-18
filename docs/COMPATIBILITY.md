@@ -7,14 +7,16 @@ ChunkVeil keeps two different kinds of evidence separate:
 
 Boot success proves initialization compatibility. It does not claim that every packet path was exercised by a real client; those paths remain `INITIALIZED` until real traffic exercises them.
 
-## Pinned 1.0.0 matrix
+## Pinned 1.0.1 matrix
 
 | Paper artifact | ProtocolLib artifact | Java | Current evidence |
 | --- | --- | --- | --- |
-| 1.21.8 build 60 | 5.4.0 stable | 21 | CI boot passed; multi-player gameplay passed |
-| 1.21.11 build 132 | dev asset updated 2026-07-18 | 25 | CI boot passed; multi-player gameplay passed |
-| 26.1.2 build 74 | dev asset updated 2026-07-18 | 25 | CI boot passed; multi-player gameplay passed |
-| 26.2 build 62 | dev asset updated 2026-07-18 | 25 | CI boot passed; multi-player gameplay passed |
+| 1.21.8 build 60 | 5.4.0 stable | 21 | CI boot passed; 1.0.0 multi-player gameplay passed |
+| 1.21.11 build 132 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.1 explosion-fix gameplay passed |
+| 26.1.2 build 74 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
+| 26.2 build 62 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
+
+1.0.1 changes only the explosion-center decoding. That path was verified three ways: unit fixtures for both packet layouts, field-layout inspection of the extracted `ClientboundExplodePacket` class from the pinned Paper 1.21.11 and 26.2 artifacts (both use the 1.21.2+ `Vec3` center), and manual TNT/wind-charge gameplay on Paper 1.21.11 confirming the previous quarantine trip no longer occurs.
 
 The canonical versions, release history, exact URLs, and SHA-256 values are maintained once in [`release-metadata.json`](../release-metadata.json). Gradle reads the development/dependency versions from it, CI derives its boot matrix from it, and `update.json` is generated with `./gradlew syncUpdateManifest`. The upstream `dev-build` URL is mutable, so CI deliberately fails when its pinned checksum changes.
 

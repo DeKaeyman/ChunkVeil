@@ -47,10 +47,10 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 
 | Server | ProtocolLib | Java | Status |
 | --- | --- | --- | --- |
-| Paper 26.1.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0) |
-| Paper 1.21.11 | pinned ProtocolLib development build | 25 | Verified (1.0.0) |
-| Paper 1.21.8 | 5.4.0 | 21+ | Verified (1.0.0) |
-| Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.0) |
+| Paper 26.1.2 | pinned ProtocolLib development build | 25 | Verified (1.0.1) |
+| Paper 1.21.11 | pinned ProtocolLib development build | 25 | Verified (1.0.1) |
+| Paper 1.21.8 | 5.4.0 | 21+ | Verified (1.0.1) |
+| Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.1) |
 
 The repository's [`release-metadata.json`](https://github.com/DeKaeyman/ChunkVeil/blob/main/release-metadata.json) is the canonical machine-readable source for build versions, pinned compatibility artifacts, checksums, and update releases.
 | Other Paper 1.21.x / 26.x | matching build for that version | 21+ / 25 | Expected, not verified |

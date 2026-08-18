@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Fixed explosion packet inspection on Minecraft 1.21.2+ where the explosion center moved from three doubles into a single `Vec3` field. With `cancel-explosions: true` (the default), any explosion tripped the security state and quarantined all protected packet traffic until restart, which players experienced as a frozen world. The handler now reads the modern vector layout and falls back to the legacy doubles layout on 1.21/1.21.1.
+
 ## 1.0.0
 
 First stable release. Promotes the multi-player-tested `1.0.0-rc.1` code without functional changes after continued error-free server use on Paper 1.21.8, 1.21.11, 26.1.2, and 26.2.

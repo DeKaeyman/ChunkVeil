@@ -1,29 +1,30 @@
 {
-  "developmentVersion": "1.0.0",
+  "developmentVersion": "1.0.1",
   "defaultPaperMinecraft": "1.21.11",
   "defaultPaperApi": "1.21.11-R0.1-SNAPSHOT",
   "compileProtocolLib": "5.4.0",
-  "checkedAt": "2026-07-18",
+  "checkedAt": "2026-08-18",
   "protocolLib": {
     "stable-5.4.0": {
       "label": "5.4.0",
       "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/5.4.0/ProtocolLib.jar",
       "sha256": "ee2e7ab9b5386f2d103081c4d108e61b1035df2ca692b53d6e2409fb1f5caccf"
     },
-    "dev-2026-07-18": {
-      "label": "dev@2026-07-18",
+    "dev-2026-08-18": {
+      "label": "dev@2026-08-18",
       "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
-      "sha256": "9f7f5f42a50c0101001248b17d1c2383043e9b35d298fca6bb34aff65eb9d842",
+      "sha256": "72d6068e2a9d05bc39e055639075decf1b74e011be8bdab2fb1e9337f27f1185",
       "note": "Mutable upstream dev-build URL; the checksum pins the reviewed artifact."
     }
   },
   "combinations": [
-    {"paperVersion":"1.21.8","paperBuild":60,"java":21,"paperUrl":"https://fill-data.papermc.io/v1/objects/8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e/paper-1.21.8-60.jar","paperSha256":"8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e","protocolLib":"stable-5.4.0","releaseVerified":"1.0.0","nextSnapshotStatus":"manual-gameplay-passed"},
-    {"paperVersion":"1.21.11","paperBuild":132,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba/paper-1.21.11-132.jar","paperSha256":"5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba","protocolLib":"dev-2026-07-18","releaseVerified":"1.0.0","nextSnapshotStatus":"manual-gameplay-passed"},
-    {"paperVersion":"26.1.2","paperBuild":74,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7/paper-26.1.2-74.jar","paperSha256":"1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7","protocolLib":"dev-2026-07-18","releaseVerified":"1.0.0","nextSnapshotStatus":"manual-gameplay-passed"},
-    {"paperVersion":"26.2","paperBuild":62,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5/paper-26.2-62.jar","paperSha256":"597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5","protocolLib":"dev-2026-07-18","releaseVerified":"1.0.0","nextSnapshotStatus":"manual-gameplay-passed"}
+    {"paperVersion":"1.21.8","paperBuild":60,"java":21,"paperUrl":"https://fill-data.papermc.io/v1/objects/8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e/paper-1.21.8-60.jar","paperSha256":"8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e","protocolLib":"stable-5.4.0","releaseVerified":"1.0.1","nextSnapshotStatus":"manual-gameplay-passed"},
+    {"paperVersion":"1.21.11","paperBuild":132,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba/paper-1.21.11-132.jar","paperSha256":"5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba","protocolLib":"dev-2026-08-18","releaseVerified":"1.0.1","nextSnapshotStatus":"manual-gameplay-passed"},
+    {"paperVersion":"26.1.2","paperBuild":74,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7/paper-26.1.2-74.jar","paperSha256":"1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7","protocolLib":"dev-2026-08-18","releaseVerified":"1.0.1","nextSnapshotStatus":"manual-gameplay-passed"},
+    {"paperVersion":"26.2","paperBuild":62,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5/paper-26.2-62.jar","paperSha256":"597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5","protocolLib":"dev-2026-08-18","releaseVerified":"1.0.1","nextSnapshotStatus":"manual-gameplay-passed"}
   ],
   "releases": [
+    {"version":"1.0.1","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.1","severity":"recommended","prerelease":false,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Fixes explosion packet inspection on Minecraft 1.21.2+, where any explosion tripped the security quarantine with cancel-explosions enabled. Strongly recommended for all servers."},
     {"version":"1.0.0","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.0","severity":"recommended","prerelease":false,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Stable confidentiality-first release with particle, vibration-origin and light protection, diagnostics, compatibility verification, and additive config upgrades."},
     {"version":"1.0.0-rc.1","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.0-rc.1","severity":"recommended","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Release candidate with confidentiality-first packet handling, particle/vibration/light protection, diagnostics, compatibility verification, and additive config upgrades."},
     {"version":"0.5.0","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v0.5.0","severity":"recommended","prerelease":false,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Adds packet regression tests, /chunkveil verify, config dry-run validation, and a protection status API."},

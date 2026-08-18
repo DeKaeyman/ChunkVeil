@@ -58,7 +58,7 @@ ProtocolLib downloads:
 
 ChunkVeil ships as a single universal jar.
 
-[B]Verified with ChunkVeil 1.0.0[/B] (CI boot, multi-player gameplay testing, and continued server use):
+[B]Verified with ChunkVeil 1.0.1[/B] (CI boot matrix on all listed versions; the 1.0.1 explosion fix additionally gameplay-tested on Paper 1.21.11):
 [LIST]
 [*]Paper 26.2 + pinned ProtocolLib development build + Java 25
 [*]Paper 26.1.2 + pinned ProtocolLib development build + Java 25
