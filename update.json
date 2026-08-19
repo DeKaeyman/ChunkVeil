@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.0.2",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.2",
+            "severity": "recommended",
+            "prerelease": false,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Fixes cross-player packet corruption where blocks placed or mined by an underground player turned into the fake block and desynced into ghost blocks when another player was nearby. Strongly recommended for all servers."
+        },
+        {
             "version": "1.0.1",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.1",
             "severity": "recommended",

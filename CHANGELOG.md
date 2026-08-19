@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Fixed cross-player packet corruption for block changes, multi-block changes, and standalone light updates. These broadcast packets are a single instance shared by every tracking player, and rewriting them in place for one player leaked the fake block data to players who should have received real data. Underground players near an observer saw their own placed or mined blocks turn into the fake block and desync into unminable ghost blocks (including "Flying is not enabled" kicks). Per-player rewrites now operate on a clone, matching the chunk packet path.
+
 ## 1.0.1
 
 - Fixed explosion packet inspection on Minecraft 1.21.2+ where the explosion center moved from three doubles into a single `Vec3` field. With `cancel-explosions: true` (the default), any explosion tripped the security state and quarantined all protected packet traffic until restart, which players experienced as a frozen world. The handler now reads the modern vector layout and falls back to the legacy doubles layout on 1.21/1.21.1.
