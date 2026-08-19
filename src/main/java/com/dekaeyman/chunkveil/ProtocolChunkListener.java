@@ -508,7 +508,11 @@ final class ProtocolChunkListener {
                 throw new IllegalArgumentException("block change packet has no readable position");
             }
             if (veilEngine.shouldHideBlock(event.getPlayer(), position.getX(), position.getY(), position.getZ())) {
-                event.getPacket().getBlockData().write(0, fakeBlockData(event.getPlayer().getWorld()));
+                // Broadcast packets are one shared instance delivered to every
+                // tracking player; a per-player rewrite must never mutate it.
+                PacketContainer rewritten = event.getPacket().shallowClone();
+                rewritten.getBlockData().write(0, fakeBlockData(event.getPlayer().getWorld()));
+                event.setPacket(rewritten);
                 metrics.countBlockChangeRewritten();
                 protectionHealth.enforced(PacketSecurityState.ProtectedPath.BLOCK_CHANGE);
             }
@@ -552,7 +556,11 @@ final class ProtocolChunkListener {
             }
 
             if (changed) {
-                event.getPacket().getBlockDataArrays().write(0, blockData);
+                // Broadcast packets are one shared instance delivered to every
+                // tracking player; a per-player rewrite must never mutate it.
+                PacketContainer rewritten = event.getPacket().shallowClone();
+                rewritten.getBlockDataArrays().write(0, blockData);
+                event.setPacket(rewritten);
                 metrics.countMultiBlockChangeRewritten();
                 protectionHealth.enforced(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             }
@@ -583,7 +591,11 @@ final class ProtocolChunkListener {
             }
 
             if (changed) {
-                event.getPacket().getMultiBlockChangeInfoArrays().write(0, changes);
+                // Broadcast packets are one shared instance delivered to every
+                // tracking player; a per-player rewrite must never mutate it.
+                PacketContainer rewritten = event.getPacket().shallowClone();
+                rewritten.getMultiBlockChangeInfoArrays().write(0, changes);
+                event.setPacket(rewritten);
                 metrics.countMultiBlockChangeRewritten();
                 protectionHealth.enforced(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             }
@@ -756,6 +768,10 @@ final class ProtocolChunkListener {
                 throw new IllegalArgumentException("light update packet has no readable chunk coordinates");
             }
             if (veilEngine.shouldHideChunk(event.getPlayer(), chunkX, chunkZ)) {
+                // The light wrapper exposes the packet's live byte arrays, so
+                // in-place sanitizing would corrupt the shared broadcast
+                // instance for the other recipients. Work on a deep clone.
+                event.setPacket(event.getPacket().deepClone());
                 sanitizeLightData(event, event.getPlayer().getWorld());
             }
             protectionHealth.observed(PacketSecurityState.ProtectedPath.LIGHT);
