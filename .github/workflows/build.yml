@@ -93,11 +93,11 @@ jobs:
       - id: metadata
         name: Build CI matrix from release-metadata.json
         run: |
-          echo "matrix=$(jq -c '{include: [.combinations[] as $c | .protocolLib[$c.protocolLib] as $p | {paper: ($c.paperVersion + "-" + ($c.paperBuild|tostring)), java: ($c.java|tostring), paper_url: $c.paperUrl, paper_sha: $c.paperSha256, protocollib: $p.label, protocollib_url: $p.url, protocollib_sha: $p.sha256}]}' release-metadata.json)" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(jq -c '{include: [.combinations[] as $c | .protocolLib[$c.protocolLib] as $p | {platform: ($c.platform // "paper"), paper: ($c.paperVersion + "-" + ($c.paperBuild|tostring)), java: ($c.java|tostring), paper_url: $c.paperUrl, paper_sha: $c.paperSha256, protocollib: $p.label, protocollib_url: $p.url, protocollib_sha: $p.sha256}]}' release-metadata.json)" >> "$GITHUB_OUTPUT"
           echo "development-version=$(jq -r '.developmentVersion' release-metadata.json)" >> "$GITHUB_OUTPUT"
 
   compatibility-boot:
-    name: Boot Paper ${{ matrix.paper }} + ${{ matrix.protocollib }}
+    name: Boot ${{ matrix.platform }} ${{ matrix.paper }} + ${{ matrix.protocollib }}
     needs: [build, compatibility-metadata]
     runs-on: ubuntu-latest
     strategy:
@@ -115,7 +115,7 @@ jobs:
           path: dist
       - name: Boot exact server/plugin combination
         env:
-          PAPER_VERSION: ${{ matrix.paper }}
+          PAPER_VERSION: ${{ matrix.platform }}-${{ matrix.paper }}
           PAPER_URL: ${{ matrix.paper_url }}
           PAPER_SHA256: ${{ matrix.paper_sha }}
           PROTOCOLLIB_URL: ${{ matrix.protocollib_url }}

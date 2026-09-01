@@ -2,6 +2,7 @@ name: ChunkVeil
 version: '${version}'
 main: com.dekaeyman.chunkveil.ChunkVeilPlugin
 api-version: '1.21'
+folia-supported: true
 softdepend:
   - ProtocolLib
   - Orebfuscator

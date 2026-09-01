@@ -1,8 +1,6 @@
 package com.dekaeyman.chunkveil;
 
 import java.util.Map;
-import java.util.UUID;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -24,10 +22,9 @@ final class UpdateNotifyListener implements Listener {
 
     @EventHandler
     void onPlayerJoin(PlayerJoinEvent event) {
-        UUID playerId = event.getPlayer().getUniqueId();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player player = Bukkit.getPlayer(playerId);
-            if (player == null) {
+        Player player = event.getPlayer();
+        VeilScheduler.runOnEntityLater(plugin, player, () -> {
+            if (!player.isOnline()) {
                 return;
             }
 

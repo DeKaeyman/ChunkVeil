@@ -47,6 +47,39 @@ tasks.named('test') {
     }
 }
 
+// The legacy Bukkit scheduler is unsafe on Folia. All scheduling must go
+// through VeilScheduler, which routes to Paper's modern schedulers and works
+// on both platforms.
+tasks.register('checkNoLegacyScheduler') {
+    description = 'Fails when runtime sources use the legacy Bukkit scheduler.'
+    def sourceDir = file('src/main/java')
+    inputs.dir(sourceDir)
+    outputs.upToDateWhen { true }
+    doLast {
+        def legacyPattern = java.util.regex.Pattern.compile(
+                /Bukkit\.getScheduler|getServer\(\)\.getScheduler|BukkitRunnable|org\.bukkit\.scheduler\./)
+        def violations = []
+        sourceDir.eachFileRecurse(groovy.io.FileType.FILES) { sourceFile ->
+            if (!sourceFile.name.endsWith('.java')) {
+                return
+            }
+            sourceFile.readLines('UTF-8').eachWithIndex { line, index ->
+                if (legacyPattern.matcher(line).find()) {
+                    violations << "${sourceFile.name}:${index + 1}: ${line.trim()}"
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Legacy Bukkit scheduler usage found (use VeilScheduler instead):\n"
+                    + violations.join('\n'))
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('checkNoLegacyScheduler')
+}
+
 // The distributed jar is the shaded jar: bStats is bundled and relocated so
 // it cannot clash with other plugins that also ship bStats.
 tasks.named("shadowJar") {
@@ -66,6 +99,39 @@ tasks.named("build") {
 tasks.named("runServer") {
     minecraftVersion(paperMinecraftVersion)
     pluginJars(tasks.named("shadowJar").flatMap { it.archiveFile })
+}
+
+// Local Folia test server: ./gradlew runFolia
+// Runs in its own directory on port 25580 so it can run next to a local Paper
+// server. ProtocolLib (the pinned dev build from release-metadata.json) is
+// downloaded automatically. The server itself runs on Java 25, which the
+// pinned ProtocolLib development build requires, independent of the Java 21
+// the Gradle build uses.
+runPaper.folia.registerTask()
+
+tasks.named("runFolia") {
+    minecraftVersion(paperMinecraftVersion)
+    runDirectory = layout.projectDirectory.dir('run/folia')
+    pluginJars(tasks.named("shadowJar").flatMap { it.archiveFile })
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    def foliaCombination = releaseMetadata.combinations.find { it.platform == 'folia' }
+    downloadPlugins {
+        url(releaseMetadata.protocolLib[foliaCombination.protocolLib].url)
+    }
+    doFirst {
+        def serverProperties = file('run/folia/server.properties')
+        if (!serverProperties.exists()) {
+            serverProperties.parentFile.mkdirs()
+            serverProperties.text = "server-port=25580\nquery.port=25580\n"
+        }
+        // Same acceptance this repository already performs for CI boot servers.
+        def eula = file('run/folia/eula.txt')
+        if (!eula.exists()) {
+            eula.text = "eula=true\n"
+        }
+    }
 }
 
 def targetJavaVersion = 21

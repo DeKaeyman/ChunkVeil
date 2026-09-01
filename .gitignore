@@ -117,5 +117,8 @@ gradle-app.setting
 run/
 runs/
 
+# Local implementation plans
+FOLIA_TODO.md
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle/wrapper/gradle-wrapper.jar

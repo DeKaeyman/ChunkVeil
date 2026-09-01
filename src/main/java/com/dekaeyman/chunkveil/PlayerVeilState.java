@@ -1,18 +1,22 @@
 package com.dekaeyman.chunkveil;
 
-import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 final class PlayerVeilState {
-    private final Deque<VeilChunkUpdate> queuedUpdates = new ArrayDeque<>();
-    private final Map<ChunkKey, VeilMode> queuedModes = new HashMap<>();
-    private final Map<ChunkKey, VeilMode> appliedModes = new HashMap<>();
+    // Mutated by the owning player's thread. The chunk collections are
+    // concurrent because chunk-unload cleanup (forgetChunk) runs synchronously
+    // on the unloading chunk's region thread on Folia; every cross-thread
+    // interleaving is benign (a surviving stale update is skipped later by the
+    // chunk-loaded check).
+    private final Deque<VeilChunkUpdate> queuedUpdates = new ConcurrentLinkedDeque<>();
+    private final Map<ChunkKey, VeilMode> queuedModes = new ConcurrentHashMap<>();
+    private final Map<ChunkKey, VeilMode> appliedModes = new ConcurrentHashMap<>();
     private final Set<Integer> hiddenEntityIds = ConcurrentHashMap.newKeySet();
     private final Set<UUID> hiddenEntityUuids = ConcurrentHashMap.newKeySet();
     private final Map<Integer, UUID> hiddenEntityUuidsById = new ConcurrentHashMap<>();

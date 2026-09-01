@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.1.0-rc.1",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.1",
+            "severity": "optional",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Release candidate adding experimental Folia support in the same universal jar. All scheduling now uses Paper's modern scheduler APIs with one engine worker per player; Paper behavior is unchanged. Folia targets are boot-verified; test before production use."
+        },
+        {
             "version": "1.0.2",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.2",
             "severity": "recommended",

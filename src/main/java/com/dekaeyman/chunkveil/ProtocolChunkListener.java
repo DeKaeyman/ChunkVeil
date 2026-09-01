@@ -221,7 +221,7 @@ final class ProtocolChunkListener {
                     lastChunkPacketFormat = sectionBlockCountIsLeInt ? "26.x little-endian count" : "1.21.x big-endian count";
                     lastChunkWorld = player.getWorld().getName();
                     metrics.countChunkPacket(true, true);
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    VeilScheduler.runOnEntity(plugin, player, () -> {
                         if (!securityState.isTripped()) {
                             veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ);
                         }
@@ -337,6 +337,12 @@ final class ProtocolChunkListener {
             boolean hidden;
             if (entity != null) {
                 hidden = veilEngine.shouldHideEntity(viewer, entity);
+                if (!hidden && VeilScheduler.folia() && !viewer.getWorld().equals(entity.getWorld())) {
+                    // On Folia this callback runs on the entity's region while
+                    // the viewer may be mid-transition on another; a stale
+                    // world read fails toward hiding, never toward revealing.
+                    hidden = true;
+                }
             } else {
                 Location location = readEntityLocation(event, viewer);
                 if (location == null) {
@@ -355,7 +361,7 @@ final class ProtocolChunkListener {
 
             event.setCancelled(true);
             metrics.countEntitySpawnCancelled();
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            VeilScheduler.runOnEntity(plugin, viewer, () -> {
                 if (securityState.isTripped()) {
                     return;
                 }
@@ -383,7 +389,7 @@ final class ProtocolChunkListener {
             if (event.getPacketType() == PacketType.Play.Server.ENTITY_DESTROY) {
                 Player viewer = event.getPlayer();
                 for (int entityId : entityIdsInPacket(event)) {
-                    Bukkit.getScheduler().runTask(plugin, () -> veilEngine.forgetEntity(viewer, entityId));
+                    VeilScheduler.runOnEntity(plugin, viewer, () -> veilEngine.forgetEntity(viewer, entityId));
                 }
                 protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
@@ -860,7 +866,7 @@ final class ProtocolChunkListener {
         protectionHealth.failed(path, reason);
         boolean firstTrip = securityState.tripAndCancel(path, reason, () -> event.setCancelled(true));
         if (firstTrip && failClosedScheduled.compareAndSet(false, true)) {
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.failClosed(reason));
+            VeilScheduler.runGlobal(plugin, () -> plugin.failClosed(reason));
         }
     }
 

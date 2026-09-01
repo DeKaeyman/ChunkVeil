@@ -22,9 +22,9 @@ For development builds, use the GitHub Actions artifact from the latest successf
   <img src="docs/assets/simple/banner-2.png" alt="ChunkVeil requirements" width="100%">
 </p>
 
-- Paper 1.21.x or 26.x
-- Java 21 or newer; Java 25 is required for Paper 26.x and the currently pinned ProtocolLib development build
-- ProtocolLib compatible with your Paper/Minecraft version
+- Paper 1.21.x or 26.x, or Folia 1.21.11 / 26.2 (experimental — see [Folia support](#folia-support-experimental))
+- Java 21 or newer; Java 25 is required for Paper 26.x, Folia, and the currently pinned ProtocolLib development build
+- ProtocolLib compatible with your Paper/Minecraft version (on Folia, a Folia-compatible build such as the pinned development build)
 
 ProtocolLib version matters. Pick the build that matches your server version:
 
@@ -43,11 +43,26 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Other Paper 1.21.x | matching build for that version | 21+ | Expected, not verified |
 | Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.2) |
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
-| Spigot, Folia, pre-1.21 | - | - | Unsupported |
+| Folia 1.21.11 | pinned ProtocolLib development build | 25 | Experimental (boot-verified in CI, not gameplay-verified) |
+| Folia 26.2 | pinned ProtocolLib development build | 25 | Experimental (boot-verified in CI, not gameplay-verified) |
+| Spigot, pre-1.21 | - | - | Unsupported |
 
 If a combination marked *expected* misbehaves, ChunkVeil is designed to fail closed rather than leak (see [Protection Model](#protection-model)), and `/chunkveil verify` will tell you what went wrong.
 
-The [checksum-pinned compatibility matrix](docs/COMPATIBILITY.md) boots exact Paper and ProtocolLib artifacts in CI. Compatibility and release values come from the canonical [`release-metadata.json`](release-metadata.json), preventing the build, CI matrix, and update manifest from drifting apart.
+The [checksum-pinned compatibility matrix](docs/COMPATIBILITY.md) boots exact Paper, Folia, and ProtocolLib artifacts in CI. Compatibility and release values come from the canonical [`release-metadata.json`](release-metadata.json), preventing the build, CI matrix, and update manifest from drifting apart.
+
+### Folia support (experimental)
+
+The same universal jar runs on Folia (`folia-supported: true`); there is no separate build. All scheduling uses Paper's modern scheduler APIs, so Paper keeps its existing single-threaded behavior while Folia routes work to the owning region threads. Where a region boundary prevents safe access, ChunkVeil always degrades toward keeping data hidden, never toward revealing it, and a runtime failure still fails closed exactly as on Paper.
+
+Current Folia-specific behavior while support is experimental:
+
+- ChunkVeil requires a ProtocolLib build that supports Folia (ProtocolLib declares Folia support since 5.1.0; use the pinned development build for 1.21.9+).
+- `/chunkveil disable` restores real chunks asynchronously per region, so its chunk count reads 0.
+- Entities hidden for a viewer inside a region that viewer no longer owns may stay hidden until they are re-tracked or the viewer rejoins.
+- TPS-adaptive scan quality is inactive (Folia has no global TPS); scans always run at configured quality.
+
+Folia targets are boot-verified in CI but not yet gameplay-verified. Treat Folia deployments as a preview and report issues with the exact Folia build, region-related error logs, Java, and ProtocolLib versions.
 
 ## Features
 
@@ -137,8 +152,8 @@ When `hide-air` is enabled, ChunkVeil also replaces underground air with the fak
 
 ## Installation
 
-1. Install Paper 1.21.x or 26.x.
-2. Install Java 21 or newer. Use Java 25 for Paper 26.x or the currently pinned ProtocolLib development build.
+1. Install Paper 1.21.x or 26.x (or, experimentally, Folia 1.21.11 / 26.2).
+2. Install Java 21 or newer. Use Java 25 for Paper 26.x, Folia, or the currently pinned ProtocolLib development build.
 3. Install a ProtocolLib build compatible with your Paper version (see [Compatibility](#compatibility)).
 4. Put `ChunkVeil.jar` in your server's `plugins` folder.
 5. Start the server once to generate `plugins/ChunkVeil/config.yml` and `plugins/ChunkVeil/lang.yml`. Upgrades add newly introduced defaults without replacing your explicit settings or custom worlds.

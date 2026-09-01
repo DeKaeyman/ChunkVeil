@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0-rc.1
+
+Experimental Folia support in the same universal jar. Paper behavior is preserved by construction: every platform branch is constant on Paper, and all scheduling now uses Paper's modern scheduler APIs, which run on the main thread there.
+
+- Added experimental Folia support (`folia-supported: true`). Initial targets are Folia 1.21.11 and 26.2 with the pinned ProtocolLib dev build; both are boot-verified in CI but not yet gameplay-verified.
+- Replaced every legacy Bukkit scheduler call with a shared routing layer (`VeilScheduler`) over Paper's global-region, async, and per-entity schedulers. A Gradle check now fails the build if legacy scheduler usage reappears in runtime sources.
+- The engine's single global tick worker is now one repeating worker per online player on that player's entity scheduler. Per-player budgets, queue fairness, reveal/hide ordering, and adoption of untracked players are unchanged; on Paper all workers still run on the main thread.
+- Queue-processing timing is now recorded per player per tick instead of per server tick; `/chunkveil predict` scales the queue term by player count accordingly, and status, report, and debug output label the metric as per-player.
+- Per-player chunk bookkeeping uses concurrent structures, so chunk-unload cleanup stays synchronous on both platforms and a fast unload/reload cycle cannot erase a fresh hidden-chunk marker.
+- On Folia, chunk and entity access is guarded by region ownership and always degrades toward staying hidden: rays stop at unowned chunks, queued updates for unowned chunks are skipped like unloaded ones, and entities in unowned regions stay hidden until they can be re-validated.
+- On Folia, the wide-radius entity scan collects candidates from owned loaded chunks instead of `getNearbyEntities`, and hidden-entity validation no longer uses global UUID lookups. Adaptive scan quality treats Folia as a full-speed server because there is no global TPS.
+- Lifecycle commands (`reload`, `disable`, `enable`, `debug`) run their transitions on the global region thread on Folia; `refresh` and `inspect` fan out to each player's owning thread. All of these remain synchronous on Paper.
+- Added a `runFolia` Gradle task (isolated `run/folia` directory, port 25580, auto-downloaded ProtocolLib) and a Folia boot matrix in CI alongside the existing Paper matrix, with pinned SHA-256 Folia builds in `release-metadata.json` and region-ownership violations failing the boot check.
+- Known Folia limitations while support is experimental: `/chunkveil disable` restores chunks asynchronously per region (the chunk count reads 0), and entities hidden in a region the viewer no longer owns may stay hidden for that viewer until they are re-tracked or the viewer rejoins.
+
 ## 1.0.2
 
 - Fixed cross-player packet corruption for block changes, multi-block changes, and standalone light updates. These broadcast packets are a single instance shared by every tracking player, and rewriting them in place for one player leaked the fake block data to players who should have received real data. Underground players near an observer saw their own placed or mined blocks turn into the fake block and desync into unminable ghost blocks (including "Flying is not enabled" kicks). Per-player rewrites now operate on a clone, matching the chunk packet path.

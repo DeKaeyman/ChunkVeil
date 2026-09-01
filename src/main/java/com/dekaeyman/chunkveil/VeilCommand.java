@@ -254,7 +254,7 @@ final class VeilCommand implements TabExecutor {
         sendTiming(sender, "Packet chunk rewrite", metrics.packetChunkRewriteAverageMillis(), metrics.packetChunkRewriteMaxMillis(), metrics.packetChunkRewriteSamples());
         sendTiming(sender, "Chunk update masking", metrics.chunkUpdateMaskAverageMillis(), metrics.chunkUpdateMaskMaxMillis(), metrics.chunkUpdateMaskSamples());
         sendTiming(sender, "Entity scan", metrics.entityScanAverageMillis(), metrics.entityScanMaxMillis(), metrics.entityScanSamples());
-        sendTiming(sender, "Queue processing", metrics.queueProcessingAverageMillis(), metrics.queueProcessingMaxMillis(), metrics.queueProcessingSamples());
+        sendTiming(sender, "Queue processing (per player)", metrics.queueProcessingAverageMillis(), metrics.queueProcessingMaxMillis(), metrics.queueProcessingSamples());
     }
 
     private void sendTiming(CommandSender sender, String label, double averageMillis, double maxMillis, long samples) {
@@ -596,47 +596,59 @@ final class VeilCommand implements TabExecutor {
             return;
         }
 
-        VeilEngine.PlayerInspection inspection = plugin.veilEngine().inspectPlayer(target);
-        sender.sendMessage(lang().message("commands.inspect.player", Map.of(
-                "badge", infoBadge(),
-                "player", inspection.playerName()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.world", Map.of(
-                "badge", infoBadge(),
-                "world", inspection.worldName()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.bypass", Map.of(
-                "badge", inspection.bypassed() ? warnBadge() : okBadge(),
-                "state", state(inspection.bypassed())
-        )));
-        sender.sendMessage(lang().message("commands.inspect.client-view-distance", Map.of(
-                "badge", infoBadge(),
-                "distance", inspection.clientViewDistance()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.effective-scan-radius", Map.of(
-                "badge", infoBadge(),
-                "radius", inspection.effectiveScanRadius()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.visible-chunks", Map.of(
-                "badge", infoBadge(),
-                "chunks", inspection.visibleChunkCount()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.queued-chunks", Map.of(
-                "badge", inspection.queuedChunkCount() > 0 ? warnBadge() : okBadge(),
-                "chunks", inspection.queuedChunkCount()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.hidden-entities", Map.of(
-                "badge", infoBadge(),
-                "entities", inspection.hiddenEntityCount()
-        )));
-        sender.sendMessage(lang().message("commands.inspect.last-scan", Map.of(
-                "badge", inspection.lastViewRevealAgeMillis() < 0L ? warnBadge() : infoBadge(),
-                "age", age(inspection.lastViewRevealAgeMillis())
-        )));
-        sender.sendMessage(lang().message("commands.inspect.current-chunk", Map.of(
-                "badge", "hidden".equals(inspection.currentChunkState()) ? warnBadge() : okBadge(),
-                "state", inspection.currentChunkState()
-        )));
+        // The inspection reads the target's live location and view distance,
+        // so it runs on the target's owning thread (inline on Paper) and
+        // replies to the sender from there.
+        VeilEngine veilEngine = plugin.veilEngine();
+        Runnable inspectTask = () -> {
+            VeilEngine.PlayerInspection inspection = veilEngine.inspectPlayer(target);
+            sender.sendMessage(lang().message("commands.inspect.player", Map.of(
+                    "badge", infoBadge(),
+                    "player", inspection.playerName()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.world", Map.of(
+                    "badge", infoBadge(),
+                    "world", inspection.worldName()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.bypass", Map.of(
+                    "badge", inspection.bypassed() ? warnBadge() : okBadge(),
+                    "state", state(inspection.bypassed())
+            )));
+            sender.sendMessage(lang().message("commands.inspect.client-view-distance", Map.of(
+                    "badge", infoBadge(),
+                    "distance", inspection.clientViewDistance()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.effective-scan-radius", Map.of(
+                    "badge", infoBadge(),
+                    "radius", inspection.effectiveScanRadius()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.visible-chunks", Map.of(
+                    "badge", infoBadge(),
+                    "chunks", inspection.visibleChunkCount()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.queued-chunks", Map.of(
+                    "badge", inspection.queuedChunkCount() > 0 ? warnBadge() : okBadge(),
+                    "chunks", inspection.queuedChunkCount()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.hidden-entities", Map.of(
+                    "badge", infoBadge(),
+                    "entities", inspection.hiddenEntityCount()
+            )));
+            sender.sendMessage(lang().message("commands.inspect.last-scan", Map.of(
+                    "badge", inspection.lastViewRevealAgeMillis() < 0L ? warnBadge() : infoBadge(),
+                    "age", age(inspection.lastViewRevealAgeMillis())
+            )));
+            sender.sendMessage(lang().message("commands.inspect.current-chunk", Map.of(
+                    "badge", "hidden".equals(inspection.currentChunkState()) ? warnBadge() : okBadge(),
+                    "state", inspection.currentChunkState()
+            )));
+        };
+        if (!VeilScheduler.folia() || Bukkit.isOwnedByCurrentRegion(target)) {
+            inspectTask.run();
+        } else if (!VeilScheduler.runOnEntity(plugin, target, inspectTask)) {
+            // The target retired before the task could be scheduled.
+            sender.sendMessage(lang().message("commands.inspect.not-found", Map.of("player", target.getName())));
+        }
     }
 
     private void report(CommandSender sender, String[] args) {
@@ -745,9 +757,11 @@ final class VeilCommand implements TabExecutor {
         double chunkMaskBurstsPerPlayerPerSecond = 0.12D;
         double revealScansPerSecond = players * (1000.0D / settings.viewRevealRefreshMillis()) * revealActivityFactor;
         double entityScansPerSecond = players * (1000.0D / settings.entityScanIntervalMillis()) * entityActivityFactor;
+        // Queue timing is recorded per player per tick (one worker per player),
+        // so the per-second cost scales with the player count.
         double estimatedMillisPerSecond = revealScansPerSecond * revealMillis
                 + entityScansPerSecond * entityMillis
-                + 20.0D * queueMillis
+                + players * 20.0D * queueMillis
                 + players * chunkMaskBurstsPerPlayerPerSecond * maskMillis;
         double tickMillis = estimatedMillisPerSecond / 20.0D * cpuTier.mainThreadMultiplier();
         double loadPercent = tickMillis / 50.0D * 100.0D;
@@ -985,8 +999,8 @@ final class VeilCommand implements TabExecutor {
         appendLine(report, "entity scan samples", metrics.entityScanSamples());
         appendLine(report, "entity scan candidates inspected", metrics.entityScanCandidates());
         appendLine(report, "entity scan candidates deferred", metrics.entityScanCandidatesDeferred());
-        appendLine(report, "queue processing avg ms", decimal(metrics.queueProcessingAverageMillis()));
-        appendLine(report, "queue processing max ms", decimal(metrics.queueProcessingMaxMillis()));
+        appendLine(report, "queue processing per-player avg ms", decimal(metrics.queueProcessingAverageMillis()));
+        appendLine(report, "queue processing per-player max ms", decimal(metrics.queueProcessingMaxMillis()));
         appendLine(report, "queue processing samples", metrics.queueProcessingSamples());
 
         appendSection(report, "Tracked Runtime State");
@@ -1127,8 +1141,10 @@ final class VeilCommand implements TabExecutor {
             return;
         }
 
-        plugin.reloadVeil();
-        sender.sendMessage(lang().message("commands.reload"));
+        VeilScheduler.runGlobalOwned(plugin, () -> {
+            plugin.reloadVeil();
+            sender.sendMessage(lang().message("commands.reload"));
+        });
     }
 
     private void reloadCheck(CommandSender sender) {
@@ -1173,8 +1189,9 @@ final class VeilCommand implements TabExecutor {
             return;
         }
 
+        VeilEngine veilEngine = plugin.veilEngine();
         for (Player player : Bukkit.getOnlinePlayers()) {
-            plugin.veilEngine().rescanPlayer(player);
+            VeilScheduler.runOwned(plugin, player, () -> veilEngine.rescanPlayer(player));
         }
         sender.sendMessage(lang().message("commands.refresh", Map.of("players", Bukkit.getOnlinePlayers().size())));
     }
@@ -1189,11 +1206,13 @@ final class VeilCommand implements TabExecutor {
             return;
         }
 
-        VeilRestoreResult restoreResult = plugin.disableVeilRuntime();
-        sender.sendMessage(lang().message("commands.disable.done", Map.of(
-                "players", restoreResult.players(),
-                "chunks", restoreResult.chunks()
-        )));
+        VeilScheduler.runGlobalOwned(plugin, () -> {
+            VeilRestoreResult restoreResult = plugin.disableVeilRuntime();
+            sender.sendMessage(lang().message("commands.disable.done", Map.of(
+                    "players", restoreResult.players(),
+                    "chunks", restoreResult.chunks()
+            )));
+        });
     }
 
     private void enable(CommandSender sender) {
@@ -1210,14 +1229,16 @@ final class VeilCommand implements TabExecutor {
             sender.sendMessage(lang().message("commands.enable.security-trip"));
             return;
         }
-        plugin.enableVeilRuntime();
-        if (plugin.veilRuntimeEnabled()) {
-            sender.sendMessage(lang().message("commands.enable.done"));
-        } else {
-            sender.sendMessage(lang().message("commands.enable.failed", Map.of(
-                    "reason", plugin.runtimeDisabledReason()
-            )));
-        }
+        VeilScheduler.runGlobalOwned(plugin, () -> {
+            plugin.enableVeilRuntime();
+            if (plugin.veilRuntimeEnabled()) {
+                sender.sendMessage(lang().message("commands.enable.done"));
+            } else {
+                sender.sendMessage(lang().message("commands.enable.failed", Map.of(
+                        "reason", plugin.runtimeDisabledReason()
+                )));
+            }
+        });
     }
 
     private void debug(CommandSender sender, String[] args) {
@@ -1231,8 +1252,10 @@ final class VeilCommand implements TabExecutor {
         }
 
         boolean enabled = args[1].equalsIgnoreCase("on");
-        plugin.setDebugEnabled(enabled);
-        sender.sendMessage(lang().message("commands.debug.changed", Map.of("state", state(enabled))));
+        VeilScheduler.runGlobalOwned(plugin, () -> {
+            plugin.setDebugEnabled(enabled);
+            sender.sendMessage(lang().message("commands.debug.changed", Map.of("state", state(enabled))));
+        });
     }
 
     private boolean canUse(CommandSender sender, String permission) {

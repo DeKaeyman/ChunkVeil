@@ -23,7 +23,6 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
 /**
  * Checks a hosted version manifest for newer ChunkVeil releases that declare
@@ -48,7 +47,7 @@ final class UpdateChecker {
     private final Set<UUID> notifiedPlayers = ConcurrentHashMap.newKeySet();
     private volatile UpdateInfo availableUpdate;
     private volatile String lastLoggedVersion;
-    private BukkitTask checkTask;
+    private VeilScheduler.TaskHandle checkTask;
 
     private UpdateChecker(ChunkVeilPlugin plugin) {
         this.plugin = plugin;
@@ -66,7 +65,7 @@ final class UpdateChecker {
     static UpdateChecker start(ChunkVeilPlugin plugin) {
         UpdateChecker checker = new UpdateChecker(plugin);
         if (checker.enabled) {
-            checker.checkTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
+            checker.checkTask = VeilScheduler.runAsyncTimer(
                     plugin,
                     () -> checker.performCheck(true),
                     FIRST_CHECK_DELAY_TICKS,
@@ -95,12 +94,16 @@ final class UpdateChecker {
      * Runs a check now for a command sender and reports the outcome to them.
      */
     void checkNow(CommandSender sender) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        VeilScheduler.runAsync(plugin, () -> {
             CheckOutcome outcome = performCheck(false);
             if (!plugin.isEnabled()) {
                 return;
             }
-            Bukkit.getScheduler().runTask(plugin, () -> deliverOutcome(sender, outcome));
+            if (sender instanceof Player player) {
+                VeilScheduler.runOnEntity(plugin, player, () -> deliverOutcome(sender, outcome));
+            } else {
+                VeilScheduler.runGlobal(plugin, () -> deliverOutcome(sender, outcome));
+            }
         });
     }
 
@@ -205,13 +208,13 @@ final class UpdateChecker {
         }
 
         if (newVersion && broadcastNewUpdate && notifyInGame && plugin.isEnabled()) {
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            VeilScheduler.runGlobal(plugin, () -> {
                 UpdateInfo current = availableUpdate;
                 if (current == null) {
                     return;
                 }
                 for (Player player : Bukkit.getOnlinePlayers()) {
-                    notifyPlayer(player);
+                    VeilScheduler.runOwned(plugin, player, () -> notifyPlayer(player));
                 }
             });
         }

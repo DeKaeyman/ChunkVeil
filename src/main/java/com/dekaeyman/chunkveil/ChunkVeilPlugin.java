@@ -6,26 +6,28 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.Bukkit;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 public final class ChunkVeilPlugin extends JavaPlugin {
     enum RuntimeStopCause { NONE, ADMIN_DISABLED, STARTUP_FAILURE, SECURITY_TRIPPED }
-    private VeilEngine veilEngine;
-    private ProtocolChunkListener protocolChunkListener;
-    private VeilListener veilListener;
-    private VeilSettings settings;
-    private VeilLang lang;
-    private VeilMetrics metrics;
-    private UpdateChecker updateChecker;
-    private VeilTelemetry telemetry;
-    private boolean debugEnabled;
-    private boolean veilRuntimeEnabled;
-    private String runtimeDisabledReason;
-    private BukkitTask debugTask;
-    private BukkitTask inactiveReminderTask;
-    private String lastCriticalFailureReason;
-    private long lastCriticalFailureAtMillis;
-    private RuntimeStopCause runtimeStopCause = RuntimeStopCause.NONE;
+    // Lifecycle fields are volatile: transitions run on the global region
+    // thread on Folia while commands, events, and packet callbacks read them
+    // from other threads. On Paper everything stays on the main thread.
+    private volatile VeilEngine veilEngine;
+    private volatile ProtocolChunkListener protocolChunkListener;
+    private volatile VeilListener veilListener;
+    private volatile VeilSettings settings;
+    private volatile VeilLang lang;
+    private volatile VeilMetrics metrics;
+    private volatile UpdateChecker updateChecker;
+    private volatile VeilTelemetry telemetry;
+    private volatile boolean debugEnabled;
+    private volatile boolean veilRuntimeEnabled;
+    private volatile String runtimeDisabledReason;
+    private volatile VeilScheduler.TaskHandle debugTask;
+    private volatile VeilScheduler.TaskHandle inactiveReminderTask;
+    private volatile String lastCriticalFailureReason;
+    private volatile long lastCriticalFailureAtMillis;
+    private volatile RuntimeStopCause runtimeStopCause = RuntimeStopCause.NONE;
 
     private static final long INACTIVE_REMINDER_TICKS = 20L * 60L * 30L;
 
@@ -52,7 +54,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
         // Rate-limited reminder so an inactive protection runtime cannot go
         // unnoticed in the console while the plugin itself stays loaded.
-        this.inactiveReminderTask = getServer().getScheduler().runTaskTimer(this, () -> {
+        this.inactiveReminderTask = VeilScheduler.runGlobalTimer(this, () -> {
             if (!veilRuntimeEnabled) {
                 getLogger().warning("ChunkVeil protection is still INACTIVE (" + runtimeDisabledReason()
                         + ") Underground data is not being hidden. Run /chunkveil compat for diagnostics.");
@@ -146,13 +148,15 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         String action = getConfig().getString("security.runtime-trip-action", "QUARANTINE")
                 .trim().toUpperCase(java.util.Locale.ROOT);
         switch (action) {
-            case "STOP_SERVER" -> Bukkit.getScheduler().runTask(this, Bukkit::shutdown);
-            case "KICK_PLAYERS" -> Bukkit.getScheduler().runTask(this, () -> {
+            case "STOP_SERVER" -> VeilScheduler.runGlobal(this, Bukkit::shutdown);
+            case "KICK_PLAYERS" -> VeilScheduler.runGlobal(this, () -> {
                 for (org.bukkit.entity.Player player : Bukkit.getOnlinePlayers()) {
-                    if (settings != null && settings.isEnabledWorld(player.getWorld())) {
-                        player.kick(net.kyori.adventure.text.Component.text(
-                                "ChunkVeil protection failed closed. Please reconnect after the server owner fixes the issue."));
-                    }
+                    VeilScheduler.runOwned(this, player, () -> {
+                        if (settings != null && settings.isEnabledWorld(player.getWorld())) {
+                            player.kick(net.kyori.adventure.text.Component.text(
+                                    "ChunkVeil protection failed closed. Please reconnect after the server owner fixes the issue."));
+                        }
+                    });
                 }
             });
             case "QUARANTINE" -> { }
@@ -224,7 +228,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             debugTask = null;
         }
         if (debugEnabled) {
-            debugTask = getServer().getScheduler().runTaskTimer(this, this::logDebugSummary, 20L * 30L, 20L * 30L);
+            debugTask = VeilScheduler.runGlobalTimer(this, this::logDebugSummary, 20L * 30L, 20L * 30L);
         }
     }
 
@@ -310,7 +314,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
             stopVeil();
             if (initialBoot && getConfig().getBoolean("security.stop-server-on-startup-failure", true)) {
                 getLogger().severe("Strict startup policy is stopping the server because ChunkVeil could not protect it.");
-                Bukkit.getScheduler().runTask(this, Bukkit::shutdown);
+                VeilScheduler.runGlobal(this, Bukkit::shutdown);
             }
         }
     }
@@ -408,7 +412,7 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " entityScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanMaxMillis())
                 + " entityScanCandidates=" + metrics.entityScanCandidates()
                 + " entityScanDeferred=" + metrics.entityScanCandidatesDeferred()
-                + " queueAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingAverageMillis())
-                + " queueMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingMaxMillis()));
+                + " queuePerPlayerAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingAverageMillis())
+                + " queuePerPlayerMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.queueProcessingMaxMillis()));
     }
 }

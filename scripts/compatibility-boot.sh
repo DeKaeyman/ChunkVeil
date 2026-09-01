@@ -50,3 +50,10 @@ grep -q 'CHUNKVEIL_VERIFY=PASS' "$work/server.log"
 if grep -Eq 'ChunkVeil security state TRIPPED|Strict startup policy is stopping|Error occurred while enabling ChunkVeil' "$work/server.log"; then
   exit 1
 fi
+# Folia region-ownership and scheduler violations must fail the boot even when
+# the server survives them. Only a ChunkVeil stack frame inside the trace
+# window counts, so unrelated log lines mentioning the plugin cannot trip
+# this; the patterns are inert on plain Paper logs.
+if grep -A 40 -E 'failed main thread check|failed thread check|not owned by the current region' "$work/server.log" | grep -q 'at com\.dekaeyman\.chunkveil'; then
+  exit 1
+fi
