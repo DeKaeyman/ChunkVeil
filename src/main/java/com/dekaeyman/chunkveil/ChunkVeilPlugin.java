@@ -149,16 +149,13 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 .trim().toUpperCase(java.util.Locale.ROOT);
         switch (action) {
             case "STOP_SERVER" -> VeilScheduler.runGlobal(this, Bukkit::shutdown);
-            case "KICK_PLAYERS" -> VeilScheduler.runGlobal(this, () -> {
-                for (org.bukkit.entity.Player player : Bukkit.getOnlinePlayers()) {
-                    VeilScheduler.runOwned(this, player, () -> {
+            case "KICK_PLAYERS" -> VeilScheduler.runGlobal(this, () ->
+                    VeilScheduler.forEachOnlinePlayerOwned(this, player -> {
                         if (settings != null && settings.isEnabledWorld(player.getWorld())) {
                             player.kick(net.kyori.adventure.text.Component.text(
                                     "ChunkVeil protection failed closed. Please reconnect after the server owner fixes the issue."));
                         }
-                    });
-                }
-            });
+                    }));
             case "QUARANTINE" -> { }
             default -> getLogger().severe("Unknown security.runtime-trip-action '" + action
                     + "'; retaining QUARANTINE behavior.");
@@ -176,8 +173,25 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         getLogger().severe(headline);
         getLogger().severe("Runtime protection is INACTIVE.");
         getLogger().severe("On a runtime security trip, protected packet traffic remains quarantined and real chunks are not restored.");
-        getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
-                + getServer().getMinecraftVersion() + ", then restart the server.");
+        if (headline.contains("Unable to find") || headline.contains("ExceptionInInitializerError")
+                || headline.contains("cannot decode chunk data")) {
+            // The signature of a ProtocolLib build that does not support this
+            // Minecraft version — by far the most common cause of this state.
+            getLogger().severe("LIKELY CAUSE: your ProtocolLib build does not support Minecraft "
+                    + getServer().getMinecraftVersion() + ".");
+            getLogger().severe("Minecraft 1.21.9+ and 26.x need the current ProtocolLib development build;");
+            getLogger().severe("ProtocolLib 5.4.0 supports only up to 1.21.8. Download:");
+            getLogger().severe("https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build");
+        } else if (headline.contains("thread check") || headline.contains("owning region")
+                || headline.contains("ThreadViolation")) {
+            getLogger().severe("LIKELY CAUSE: a packet was processed on a thread that does not own the");
+            getLogger().severe("involved entity or chunk (Folia/regionized threading). Update to the newest");
+            getLogger().severe("ChunkVeil release, and if it still happens there, report this full log at");
+            getLogger().severe("https://github.com/DeKaeyman/ChunkVeil/issues");
+        } else {
+            getLogger().severe("Install a ProtocolLib build compatible with Minecraft/Paper "
+                    + getServer().getMinecraftVersion() + ", then restart the server.");
+        }
         getLogger().severe("No insecure fallback is used. Run /chunkveil verify for diagnostics.");
         getLogger().severe("============================================================");
     }

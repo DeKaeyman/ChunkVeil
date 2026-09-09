@@ -500,9 +500,8 @@ final class VeilEngine {
             return;
         }
         long startNanos = System.nanoTime();
-        int scanBlocks = (effectiveScanRadius(viewer) + 2) * 16;
         try {
-            List<Entity> candidates = collectEntityCandidates(viewer, scanBlocks);
+            List<Entity> candidates = collectEntityCandidates(viewer, entityScanBlocks(viewer));
             candidates.sort(Comparator.comparing(Entity::getUniqueId));
             FairScanWindow.Selection<Entity> selection = FairScanWindow.select(
                     candidates, state.entityScanCursor(), settings.entityScanMaxEntitiesPerPlayer());
@@ -522,36 +521,35 @@ final class VeilEngine {
                 }
             }
 
-            Set<UUID> hiddenUuids = state.hiddenEntityUuids();
-            if (!VeilScheduler.folia()) {
-                for (UUID uuid : hiddenUuids.toArray(UUID[]::new)) {
-                    Entity entity = Bukkit.getEntity(uuid);
+            // Only the entity lookup differs per platform: Paper may resolve
+            // any UUID globally (and forgets vanished entities), while Folia
+            // sees only entities observed in owned chunks this scan and keeps
+            // everything else hidden (fail-closed) until it is reachable. The
+            // reveal decision itself is shared so the platforms cannot drift.
+            Map<UUID, Entity> candidatesByUuid = null;
+            if (VeilScheduler.folia()) {
+                candidatesByUuid = new HashMap<>(candidates.size());
+                for (Entity entity : candidates) {
+                    candidatesByUuid.put(entity.getUniqueId(), entity);
+                }
+            }
+            for (UUID uuid : state.hiddenEntityUuids().toArray(UUID[]::new)) {
+                Entity entity;
+                if (candidatesByUuid == null) {
+                    entity = Bukkit.getEntity(uuid);
                     if (entity == null) {
                         state.forgetEntity(uuid);
                         continue;
                     }
-                    if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
-                        state.forgetEntity(entity.getEntityId());
-                        viewer.showEntity(plugin, entity);
-                    }
-                }
-            } else {
-                // Folia has no region-safe global UUID lookup. Validate only
-                // entities observed in owned chunks this scan; everything else
-                // stays hidden (fail-closed) until it becomes reachable.
-                Map<UUID, Entity> candidatesByUuid = new HashMap<>(candidates.size());
-                for (Entity entity : candidates) {
-                    candidatesByUuid.put(entity.getUniqueId(), entity);
-                }
-                for (UUID uuid : hiddenUuids.toArray(UUID[]::new)) {
-                    Entity entity = candidatesByUuid.get(uuid);
+                } else {
+                    entity = candidatesByUuid.get(uuid);
                     if (entity == null) {
                         continue;
                     }
-                    if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
-                        state.forgetEntity(entity.getEntityId());
-                        viewer.showEntity(plugin, entity);
-                    }
+                }
+                if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
+                    state.forgetEntity(entity.getEntityId());
+                    viewer.showEntity(plugin, entity);
                 }
             }
         } finally {
@@ -615,12 +613,17 @@ final class VeilEngine {
         // hidden in a now-unowned region stays hidden for this viewer until
         // it is re-tracked or the viewer rejoins; packet-cancelled entities
         // re-track naturally once their ids are no longer marked hidden.
-        for (Entity entity : collectEntityCandidates(viewer, (effectiveScanRadius(viewer) + 2) * 16)) {
+        for (Entity entity : collectEntityCandidates(viewer, entityScanBlocks(viewer))) {
             if (state.isEntityHidden(entity.getEntityId())) {
                 viewer.showEntity(plugin, entity);
             }
         }
         state.clearHiddenEntities();
+    }
+
+    /** Entity scan radius in blocks; the +2 chunk margin keeps hide and reveal sweeps congruent. */
+    private int entityScanBlocks(Player viewer) {
+        return (effectiveScanRadius(viewer) + 2) * 16;
     }
 
     private int refreshSentChunks(Player player) {

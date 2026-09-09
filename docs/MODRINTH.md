@@ -41,7 +41,7 @@ ChunkVeil reduces what the client can learn. It does not claim to make every hac
 ProtocolLib version matters. Pick the build that matches your server version:
 
 - Paper 1.21.4 - 1.21.8: [ProtocolLib 5.4.0](https://github.com/dmulloy2/ProtocolLib/releases) (stable release)
-- Paper 1.21.9 - 1.21.11 and 26.x: the newest ProtocolLib release or [development build](https://github.com/dmulloy2/ProtocolLib) that lists your exact version ([Hangar versions](https://hangar.papermc.io/dmulloy2/ProtocolLib/versions))
+- Paper/Folia 1.21.9+ and 26.x: the current [ProtocolLib development build](https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build) — **ProtocolLib 5.4.0 does NOT support these versions**, even though most other plugins run fine with it ([Hangar versions](https://hangar.papermc.io/dmulloy2/ProtocolLib/versions))
 
 ChunkVeil ships as a single universal jar. **Verified** means this exact combination was run on a real server with this ChunkVeil release. **Expected** means it should work but was not run before release.
 

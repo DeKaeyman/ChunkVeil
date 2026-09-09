@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.1.0-rc.2",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.2",
+            "severity": "optional",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Fixes a Folia-family security trip when another plugin flushes queued spawn packets from a foreign thread (reported on Canvas 26.2). Detects an incompatible ProtocolLib build at startup and names it clearly in the log instead of protection failing on the first player join. Adds Folia 26.1.2 to the boot-verified targets. Strongly recommended for all Folia testers."
+        },
+        {
             "version": "1.1.0-rc.1",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.1",
             "severity": "optional",

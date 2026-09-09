@@ -16,12 +16,18 @@ Boot success proves initialization compatibility. It does not claim that every p
 | 26.1.2 build 74 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
 | 26.2 build 62 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
 
-## Pinned experimental Folia matrix (1.1.0-rc.1)
+## Pinned experimental Folia matrix (1.1.0-rc.x)
 
 | Folia artifact | ProtocolLib artifact | Java | Current evidence |
 | --- | --- | --- | --- |
 | 1.21.11 build 14 | dev asset updated 2026-09-01 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
+| 26.1.2 build 8 | dev asset updated 2026-09-01 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
 | 26.2 build 7 | dev asset updated 2026-09-01 | 25 | CI boot gates the release; no gameplay evidence yet |
+
+Since 1.1.0-rc.2, every boot also exercises the startup ProtocolLib
+compatibility probe: an incompatible ProtocolLib build (such as 5.4.0 on
+1.21.9+/26.x) fails the boot with a named diagnosis instead of passing and
+tripping on the first join.
 
 Folia support ships in the same universal jar and is experimental until the
 targets above pass manual two-player gameplay testing with players far enough

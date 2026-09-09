@@ -29,7 +29,9 @@ For development builds, use the GitHub Actions artifact from the latest successf
 ProtocolLib version matters. Pick the build that matches your server version:
 
 - Paper 1.21.4 - 1.21.8: [ProtocolLib 5.4.0](https://github.com/dmulloy2/ProtocolLib/releases) (stable release)
-- Paper 1.21.9 - 1.21.11 and 26.x: the newest ProtocolLib release or [development build](https://github.com/dmulloy2/ProtocolLib) that lists your exact version ([Hangar versions](https://hangar.papermc.io/dmulloy2/ProtocolLib/versions), [SpigotMC page](https://www.spigotmc.org/resources/protocollib.1997/))
+- Paper/Folia 1.21.9+ and 26.x: the current [ProtocolLib development build](https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build) — **ProtocolLib 5.4.0 does NOT support these versions**, even though most other plugins run fine with it ([Hangar versions](https://hangar.papermc.io/dmulloy2/ProtocolLib/versions), [SpigotMC page](https://www.spigotmc.org/resources/protocollib.1997/))
+
+Since 1.1.0-rc.2, ChunkVeil checks this at startup: with an incompatible ProtocolLib build the server refuses to start (under the default strict policy) and the log names the exact problem, instead of protection failing on the first player join.
 
 ## Compatibility
 
@@ -44,6 +46,7 @@ ChunkVeil ships as a single universal jar. **Verified** means this exact combina
 | Paper 26.2 | pinned ProtocolLib development build | 25 | Verified (1.0.2) |
 | Other Paper 26.x | matching dev build for that version | 25 | Expected, not verified |
 | Folia 1.21.11 | pinned ProtocolLib development build | 25 | Experimental (boot-verified in CI, not gameplay-verified) |
+| Folia 26.1.2 | pinned ProtocolLib development build | 25 | Experimental (boot-verified in CI, not gameplay-verified) |
 | Folia 26.2 | pinned ProtocolLib development build | 25 | Experimental (boot-verified in CI, not gameplay-verified) |
 | Spigot, pre-1.21 | - | - | Unsupported |
 
@@ -265,7 +268,7 @@ Cancels secondary packets (explosions, world events, block-crack animations, pos
 When `true` (the default), ChunkVeil stops the server during boot if mandatory protection cannot initialize. Runtime failures always quarantine protected traffic and then follow `runtime-trip-action`.
 
 `security.runtime-trip-action`
-Controls the operational response after a runtime security trip: `QUARANTINE` (default), `KICK_PLAYERS` in protected worlds, or `STOP_SERVER`. Every mode retains packet quarantine and never restores real chunks.
+Controls the operational response after a runtime security trip: `QUARANTINE` (default), `KICK_PLAYERS` in protected worlds, or `STOP_SERVER`. Every mode retains packet quarantine and never restores real chunks. For survival servers `KICK_PLAYERS` is recommended: quarantined players otherwise experience a frozen, empty world that looks like a crashed server, while a kick delivers an explicit "protection failed, contact the owner" message.
 
 ## Compatibility With Anti-Xray
 

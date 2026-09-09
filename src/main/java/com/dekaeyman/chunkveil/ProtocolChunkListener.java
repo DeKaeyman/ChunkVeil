@@ -3,6 +3,7 @@ package com.dekaeyman.chunkveil;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.utility.MinecraftReflection;
 import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
@@ -59,10 +60,40 @@ final class ProtocolChunkListener {
         }
 
         ProtocolChunkListener listener = new ProtocolChunkListener(plugin, protocolManager, metrics, settings);
+        listener.probeChunkDataCompatibility();
         listener.initializeBlockRewriter(settings);
         listener.register(veilEngine, settings);
         plugin.getLogger().info("ProtocolLib chunk listener enabled with fail-closed packet rewriting.");
         return listener;
+    }
+
+    /**
+     * Forces the ProtocolLib reflection chain the concealed-chunk path needs.
+     * On a ProtocolLib build that does not support this Minecraft version,
+     * these lookups are the first thing to fail (for example 5.4.0 cannot
+     * find MinecraftKey on 26.x), but only when the first chunk carrying a
+     * block entity is rewritten — long after a healthy-looking boot. Probing
+     * here turns that confusing first-join security trip into a clear
+     * startup refusal that names the incompatible build.
+     */
+    private void probeChunkDataCompatibility() {
+        try {
+            MinecraftReflection.getMinecraftKeyClass();
+            Class.forName("com.comphenix.protocol.wrappers.WrappedLevelChunkData$BlockEntityInfo",
+                    true, ProtocolLibrary.class.getClassLoader());
+        } catch (Throwable throwable) {
+            throw new IllegalStateException("ProtocolLib " + installedProtocolLibVersion()
+                    + " cannot decode chunk data on Minecraft " + Bukkit.getMinecraftVersion()
+                    + " (" + describeThrowable(throwable) + "). Install a ProtocolLib build that lists Minecraft "
+                    + Bukkit.getMinecraftVersion() + " as supported. Minecraft 1.21.9+ and 26.x need the current"
+                    + " ProtocolLib development build; 5.4.0 supports only up to 1.21.8:"
+                    + " https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build", throwable);
+        }
+    }
+
+    private String installedProtocolLibVersion() {
+        org.bukkit.plugin.Plugin protocolLib = Bukkit.getPluginManager().getPlugin("ProtocolLib");
+        return protocolLib == null ? "(not installed)" : protocolLib.getPluginMeta().getVersion();
     }
 
     private void initializeBlockRewriter(VeilSettings settings) {
@@ -330,7 +361,17 @@ final class ProtocolChunkListener {
         Player viewer = event.getPlayer();
 
         try {
-            Entity entity = readEntity(event);
+            Entity resolvedEntity = readEntity(event);
+            if (resolvedEntity != null && !VeilScheduler.canAccessEntity(resolvedEntity)) {
+                // On Folia-family servers a queued spawn packet can be flushed
+                // from a thread that does not own the entity (for example
+                // another plugin sending a chat message from the global
+                // thread), and live-entity getters then throw region
+                // thread-check exceptions. Fall back to the packet's own data,
+                // which needs no entity access at all.
+                resolvedEntity = null;
+            }
+            final Entity entity = resolvedEntity;
             int entityId = readInteger(event, 0, entity == null ? -1 : entity.getEntityId());
             UUID entityUuid = readUuid(event, entity == null ? null : entity.getUniqueId());
 
@@ -365,7 +406,9 @@ final class ProtocolChunkListener {
                 if (securityState.isTripped()) {
                     return;
                 }
-                if (entity != null) {
+                // Ownership can change between packet time and this tick on
+                // the viewer's thread; only touch the live entity while owned.
+                if (entity != null && VeilScheduler.canAccessEntity(entity)) {
                     veilEngine.markEntityHidden(viewer, entity);
                 } else {
                     veilEngine.markEntityHidden(viewer, entityId, entityUuid);

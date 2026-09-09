@@ -137,6 +137,7 @@ commands:
     no-warnings: "{badge} &7No validation warnings."
     summary: "&7Dry run complete: &f{warnings}&7 warning(s). Nothing was applied."
   refresh: "Refreshed &f{players}&7 online players."
+  refresh-scheduled: "Scheduled a refresh for &f{players}&7 online players; it completes on each owning region."
   refresh-disabled: "Runtime is disabled. Use &f/chunkveil enable&7 to start it again."
 
   disable:

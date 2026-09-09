@@ -213,9 +213,7 @@ final class UpdateChecker {
                 if (current == null) {
                     return;
                 }
-                for (Player player : Bukkit.getOnlinePlayers()) {
-                    VeilScheduler.runOwned(plugin, player, () -> notifyPlayer(player));
-                }
+                VeilScheduler.forEachOnlinePlayerOwned(plugin, this::notifyPlayer);
             });
         }
     }

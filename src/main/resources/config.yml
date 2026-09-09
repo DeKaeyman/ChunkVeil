@@ -29,6 +29,9 @@ security:
   stop-server-on-startup-failure: true
   # QUARANTINE keeps protected packets blocked, KICK_PLAYERS disconnects
   # players in protected worlds, and STOP_SERVER shuts down cleanly.
+  # For survival servers KICK_PLAYERS is recommended: quarantined players
+  # otherwise sit in a frozen, empty world that looks like a crashed server,
+  # while a kick tells them clearly that protection failed.
   runtime-trip-action: QUARANTINE
 
 worlds:

@@ -74,9 +74,9 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I tested with the supported Paper version listed by ChunkVeil.
+        - label: I tested with the supported Paper/Folia version listed by ChunkVeil.
           required: true
-        - label: I tested with ProtocolLib installed and up to date for my server version.
+        - label: "My ProtocolLib build matches my server version: on Minecraft 1.21.9+ or 26.x I am using the current ProtocolLib development build (NOT 5.4.0, which supports only up to 1.21.8)."
           required: true
         - label: I tried to reproduce with only ChunkVeil and ProtocolLib installed, or explained why I could not.
           required: true

@@ -49,7 +49,7 @@ ChunkVeil helps reduce [B]xray, ESP, freecam scouting, hidden-base discovery, ca
 
 [LIST]
 [*]Paper 1.21.4 - 1.21.8: ProtocolLib 5.4.0 (stable release)
-[*]Paper 1.21.9 - 1.21.11 and 26.x: the newest ProtocolLib release or development build that lists your exact version
+[*]Paper/Folia 1.21.9+ and 26.x: the current ProtocolLib development build - [B]ProtocolLib 5.4.0 does NOT support these versions[/B], even though most other plugins run fine with it
 [/LIST]
 
 ProtocolLib downloads:

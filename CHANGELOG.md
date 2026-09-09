@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0-rc.2
+
+Turns the most common misconfiguration — a ProtocolLib build that does not support the server's Minecraft version — from a confusing first-join failure into a clear, named startup refusal. Motivated by real 1.1.0-rc.1 field reports (ProtocolLib 5.4.0 on Folia 26.x).
+
+- Fixed a Folia-family security trip in the entity-spawn packet handler (reported on Canvas 26.2): when another plugin flushes a player's connection from a foreign thread — for example sending a chat message from the global thread — a queued spawn packet reached ChunkVeil on a thread that did not own the spawned entity, live-entity getters threw a region thread-check exception, and protection tripped fail-closed (experienced as a server-wide freeze). The packet path now never touches a live entity it does not own and falls back to the packet's own id/uuid/position data, which is always safe. The VEIL OFF banner also recognizes thread-check trips and no longer suggests a ProtocolLib change for them.
+- Startup now probes the exact ProtocolLib reflection chain the concealed-chunk path needs. On an incompatible build (for example 5.4.0 on 1.21.9+/26.x, which only fails once the first chunk carrying a block entity is rewritten), the server refuses to start under the default strict policy and the log names the installed ProtocolLib version, the server version, and the download that fixes it.
+- The VEIL OFF banner recognizes the reflection-failure signature on runtime trips too and prints the same "likely cause: your ProtocolLib build does not support Minecraft X" diagnosis with the dev-build link.
+- `/chunkveil verify` warns about the known-bad pairing (ProtocolLib ≤ 5.4.0 on Minecraft 1.21.9+/26.x) even before any packet traffic exists.
+- Added Folia 26.1.2 to the checksum-pinned, boot-verified target matrix (real rc.1 testers run it).
+- Documentation: the ProtocolLib picker in the README and marketplace pages now states bluntly that 5.4.0 does NOT support 1.21.9+/26.x even though most other plugins run fine with it; the bug-report template asks for the matching build explicitly; `KICK_PLAYERS` is documented as the recommended trip action for survival servers because a quarantined world looks like a crashed server while a kick carries a clear message.
+- On Folia, `/chunkveil refresh` now reports that the refresh was scheduled per region instead of implying synchronous completion. Internal cleanups: the platform-split hidden-entity validation shares one reveal condition, and lifecycle fan-out loops share one helper.
+
 ## 1.1.0-rc.1
 
 Experimental Folia support in the same universal jar. Paper behavior is preserved by construction: every platform branch is constant on Paper, and all scheduling now uses Paper's modern scheduler APIs, which run on the main thread there.

@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 /**
@@ -111,6 +112,17 @@ final class VeilScheduler {
             task.run();
         } else {
             runOnEntity(plugin, entity, task);
+        }
+    }
+
+    /**
+     * Runs an action for every online player on that player's owning thread —
+     * inline on Paper, per-region on Folia. The shared shape for lifecycle
+     * fan-out; must not be called from packet/netty threads.
+     */
+    static void forEachOnlinePlayerOwned(Plugin plugin, Consumer<Player> action) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            runOwned(plugin, player, () -> action.accept(player));
         }
     }
 

@@ -285,6 +285,18 @@ final class VeilCommand implements TabExecutor {
         boolean protocolLibOk = protocolLib != null && protocolLib.isEnabled();
         if (protocolLibOk) {
             verifyLine(sender, okBadge(), "ProtocolLib is installed and enabled.");
+            String protocolLibVersion = protocolLib.getPluginMeta().getVersion();
+            String serverMinecraft = Bukkit.getMinecraftVersion();
+            // 1.21.9+ and 26.x need a ProtocolLib build newer than 5.4.0
+            // (the last stable, which supports only up to 1.21.8). Warn on the
+            // known-bad pairing even before any packet traffic exists.
+            if (UpdateChecker.compareVersions(serverMinecraft, "1.21.9") >= 0
+                    && UpdateChecker.compareVersions(protocolLibVersion, "5.4.0") <= 0) {
+                warnings++;
+                verifyLine(sender, warnBadge(), "ProtocolLib " + protocolLibVersion + " does not support Minecraft "
+                        + serverMinecraft + " (it supports only up to 1.21.8). Install the current ProtocolLib"
+                        + " development build or protection will fail at startup or on first join.");
+            }
         } else {
             failures++;
             verifyLine(sender, failBadge(), "ProtocolLib is missing or disabled. ChunkVeil cannot protect chunks without it.");
@@ -1190,10 +1202,10 @@ final class VeilCommand implements TabExecutor {
         }
 
         VeilEngine veilEngine = plugin.veilEngine();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            VeilScheduler.runOwned(plugin, player, () -> veilEngine.rescanPlayer(player));
-        }
-        sender.sendMessage(lang().message("commands.refresh", Map.of("players", Bukkit.getOnlinePlayers().size())));
+        VeilScheduler.forEachOnlinePlayerOwned(plugin, veilEngine::rescanPlayer);
+        sender.sendMessage(lang().message(
+                VeilScheduler.folia() ? "commands.refresh-scheduled" : "commands.refresh",
+                Map.of("players", Bukkit.getOnlinePlayers().size())));
     }
 
     private void disable(CommandSender sender) {
