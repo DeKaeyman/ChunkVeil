@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-rc.3
+
+- Stopped thread-check log spam (and the resulting TPS stutter) on Folia-family servers when other plugins flush packets from their own threads, reported on Canvas 26.2 with TAB and FancyHolograms. Asking ProtocolLib to resolve the live entity for a spawn packet performs a server-internal entity lookup, which regionized servers reject on foreign threads and log with a full stack trace on every queued spawn packet. On Folia-family servers the entity-spawn handler now works purely from the packet's own id, uuid, position, and type and never resolves the live entity; this was already the tested fallback path, and it is the data the client actually receives. Paper keeps its existing behavior unchanged. With this, the packet listener's entire surface is packet data, static registry data, plain field reads, and thread-safe scheduler calls, so it is safe no matter which thread another plugin flushes a connection from.
+
 ## 1.1.0-rc.2
 
 Turns the most common misconfiguration — a ProtocolLib build that does not support the server's Minecraft version — from a confusing first-join failure into a clear, named startup refusal. Motivated by real 1.1.0-rc.1 field reports (ProtocolLib 5.4.0 on Folia 26.x).

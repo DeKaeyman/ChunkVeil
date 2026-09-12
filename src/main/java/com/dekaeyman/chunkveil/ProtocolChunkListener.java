@@ -361,29 +361,21 @@ final class ProtocolChunkListener {
         Player viewer = event.getPlayer();
 
         try {
-            Entity resolvedEntity = readEntity(event);
-            if (resolvedEntity != null && !VeilScheduler.canAccessEntity(resolvedEntity)) {
-                // On Folia-family servers a queued spawn packet can be flushed
-                // from a thread that does not own the entity (for example
-                // another plugin sending a chat message from the global
-                // thread), and live-entity getters then throw region
-                // thread-check exceptions. Fall back to the packet's own data,
-                // which needs no entity access at all.
-                resolvedEntity = null;
-            }
-            final Entity entity = resolvedEntity;
+            // Resolving the live entity makes ProtocolLib run a server-internal
+            // entity lookup, and regionized servers reject that on foreign
+            // threads: any plugin that sends a packet from its own async thread
+            // (TAB, holograms, chat from the global thread) flushes queued
+            // spawn packets there and would hit a thread-check for every one.
+            // The packet itself carries the id, uuid, position, and type, so on
+            // Folia-family servers we never resolve the entity at all; Paper
+            // keeps the live path it has always used.
+            final Entity entity = VeilScheduler.folia() ? null : readEntity(event);
             int entityId = readInteger(event, 0, entity == null ? -1 : entity.getEntityId());
             UUID entityUuid = readUuid(event, entity == null ? null : entity.getUniqueId());
 
             boolean hidden;
             if (entity != null) {
                 hidden = veilEngine.shouldHideEntity(viewer, entity);
-                if (!hidden && VeilScheduler.folia() && !viewer.getWorld().equals(entity.getWorld())) {
-                    // On Folia this callback runs on the entity's region while
-                    // the viewer may be mid-transition on another; a stale
-                    // world read fails toward hiding, never toward revealing.
-                    hidden = true;
-                }
             } else {
                 Location location = readEntityLocation(event, viewer);
                 if (location == null) {

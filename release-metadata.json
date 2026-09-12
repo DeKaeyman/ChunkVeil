@@ -1,5 +1,5 @@
 {
-  "developmentVersion": "1.1.0-rc.2",
+  "developmentVersion": "1.1.0-rc.3",
   "defaultPaperMinecraft": "1.21.11",
   "defaultPaperApi": "1.21.11-R0.1-SNAPSHOT",
   "compileProtocolLib": "5.4.0",
@@ -27,6 +27,7 @@
     {"platform":"folia","paperVersion":"26.2","paperBuild":7,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3/folia-26.2-7.jar","paperSha256":"128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3","protocolLib":"dev-2026-09-01","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"}
   ],
   "releases": [
+    {"version":"1.1.0-rc.3","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.3","severity":"optional","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Stops thread-check log spam and TPS stutter on Folia-family servers when other plugins (TAB, holograms) flush packets from their own threads: the entity-spawn handler no longer resolves live entities there and works purely from packet data. Strongly recommended for all Folia testers."},
     {"version":"1.1.0-rc.2","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.2","severity":"optional","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Fixes a Folia-family security trip when another plugin flushes queued spawn packets from a foreign thread (reported on Canvas 26.2). Detects an incompatible ProtocolLib build at startup and names it clearly in the log instead of protection failing on the first player join. Adds Folia 26.1.2 to the boot-verified targets. Strongly recommended for all Folia testers."},
     {"version":"1.1.0-rc.1","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.1","severity":"optional","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Release candidate adding experimental Folia support in the same universal jar. All scheduling now uses Paper's modern scheduler APIs with one engine worker per player; Paper behavior is unchanged. Folia targets are boot-verified; test before production use."},
     {"version":"1.0.2","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.0.2","severity":"recommended","prerelease":false,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Fixes cross-player packet corruption where blocks placed or mined by an underground player turned into the fake block and desynced into ghost blocks when another player was nearby. Strongly recommended for all servers."},

@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.1.0-rc.3",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.3",
+            "severity": "optional",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Stops thread-check log spam and TPS stutter on Folia-family servers when other plugins (TAB, holograms) flush packets from their own threads: the entity-spawn handler no longer resolves live entities there and works purely from packet data. Strongly recommended for all Folia testers."
+        },
+        {
             "version": "1.1.0-rc.2",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.2",
             "severity": "optional",
