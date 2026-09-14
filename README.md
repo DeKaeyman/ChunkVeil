@@ -105,7 +105,8 @@ ChunkVeil's core rule is simple: **while protection is active, a hidden chunk ne
 Failure behavior depends on when and why protection stops:
 
 - **Startup failure:** with the default strict startup policy, the server is stopped if ChunkVeil cannot initialize protection.
-- **Runtime security trip:** the triggering packet is cancelled immediately, the listener enters an atomic `TRIPPED` state, and subsequent protected packet traffic is quarantined. Real chunks are not restored and the running server is not stopped.
+- **Rare runtime packet failure (tolerated):** a packet that cannot be protected — usually produced by another packet-rewriting plugin — is dropped instead of sent, the chunk is re-requested, and the server keeps running with protection active. The log names the likely cause. A single bad packet from a neighbor plugin never takes down a running server.
+- **Runtime security trip:** when failures keep repeating within the tolerance window (`security.runtime-failure-tolerance`, default 5 per 10 minutes; the strict preset trips on the first), something is systematically wrong: the triggering packet is cancelled, the listener enters an atomic `TRIPPED` state, and subsequent protected packet traffic is quarantined. Real chunks are not restored and the running server is not stopped.
 - **Administrator disable:** `/chunkveil disable` is an explicit operational choice and restores real chunks before removing protection.
 
 There is no automatic insecure fallback after a parser or rewriter failure. See the [strict confidentiality preset](docs/STRICT-PRESET.md) for the strongest supplied configuration posture.

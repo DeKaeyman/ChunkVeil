@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.1.0-rc.4",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.4",
+            "severity": "recommended",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "A running server is never taken down by a single bad packet anymore: rare runtime packet failures (usually from another packet-rewriting plugin) drop only that packet, re-request the chunk, and keep protection active; quarantine now requires repeated failures. Adds real diagnostics and evidence-based conflict naming to failure logs. Strongly recommended for all 1.1.0 release-candidate testers."
+        },
+        {
             "version": "1.1.0-rc.3",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.3",
             "severity": "optional",

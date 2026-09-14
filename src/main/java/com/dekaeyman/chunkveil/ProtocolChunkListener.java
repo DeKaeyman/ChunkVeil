@@ -32,7 +32,6 @@ final class ProtocolChunkListener {
     private final VeilSettings settings;
     private final boolean sectionBlockCountIsLeInt;
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
-    private final AtomicBoolean multiBlockChangeRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean failClosedScheduled = new AtomicBoolean();
     private final PacketSecurityState securityState = new PacketSecurityState();
     private final PacketProtectionHealth protectionHealth = new PacketProtectionHealth();
@@ -259,9 +258,9 @@ final class ProtocolChunkListener {
                     });
                 } catch (Throwable throwable) {
                     event.setPacket(originalPacket);
-                    packetBlockRewriteBroken.set(true);
                     trip(event, PacketSecurityState.ProtectedPath.CHUNK, packetCompatibilityFailure(
-                            "Could not atomically protect chunk " + chunkX + "," + chunkZ, throwable));
+                            "Could not atomically protect chunk " + chunkX + "," + chunkZ, throwable),
+                            player.getWorld(), chunkX, chunkZ);
                     return;
                 }
             }
@@ -565,10 +564,6 @@ final class ProtocolChunkListener {
     }
 
     private void rewriteMultiBlockChange(PacketEvent event, VeilEngine veilEngine) {
-        if (multiBlockChangeRewriteBroken.get()) {
-            return;
-        }
-
         if (rewriteModernMultiBlockChange(event, veilEngine)) {
             protectionHealth.observed(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             return;
@@ -641,10 +636,11 @@ final class ProtocolChunkListener {
                 protectionHealth.enforced(PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE);
             }
         } catch (Throwable throwable) {
-            if (multiBlockChangeRewriteBroken.compareAndSet(false, true)) {
-                String reason = packetCompatibilityFailure("Could not rewrite multi-block change packets", throwable);
-                trip(event, PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE, reason);
-            }
+            // Every failing packet is cancelled by trip(); repeated failures
+            // cross the tolerance threshold and quarantine. Skipping rewrites
+            // after a failure would silently send real block data instead.
+            String reason = packetCompatibilityFailure("Could not rewrite multi-block change packets", throwable);
+            trip(event, PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE, reason);
         }
     }
 
@@ -897,12 +893,114 @@ final class ProtocolChunkListener {
     }
 
     private void trip(PacketEvent event, PacketSecurityState.ProtectedPath path, String reason) {
+        trip(event, path, reason, null, 0, 0);
+    }
+
+    /**
+     * Handles a runtime protection failure. The failing packet is always
+     * cancelled, so nothing unprotected is ever sent. Below the configured
+     * tolerance threshold the incident is logged (and the chunk re-requested
+     * when coordinates are known) while protection keeps running; only
+     * repeated failures within the window quarantine, because that pattern
+     * means something is systematically wrong rather than one bad packet from
+     * another plugin.
+     */
+    private void trip(PacketEvent event, PacketSecurityState.ProtectedPath path, String reason,
+            World chunkWorld, int chunkX, int chunkZ) {
         metrics.countSecurityPacketCancelled();
         protectionHealth.failed(path, reason);
-        boolean firstTrip = securityState.tripAndCancel(path, reason, () -> event.setCancelled(true));
-        if (firstTrip && failClosedScheduled.compareAndSet(false, true)) {
-            VeilScheduler.runGlobal(plugin, () -> plugin.failClosed(reason));
+        event.setCancelled(true);
+
+        int maxFailures = settings.runtimeFailureToleranceMaxFailures();
+        long windowMillis = settings.runtimeFailureToleranceWindowMillis();
+        long now = System.currentTimeMillis();
+        if (!securityState.isTripped() && !securityState.recordFailure(now, maxFailures, windowMillis)) {
+            logToleratedFailure(path, reason, securityState.recentFailureCount(now, windowMillis), maxFailures);
+            if (chunkWorld != null) {
+                requestChunkResend(chunkWorld, chunkX, chunkZ);
+            }
+            return;
         }
+
+        String tripReason = maxFailures <= 1 ? reason
+                : "Repeated packet protection failures (" + securityState.recentFailureCount(now, windowMillis)
+                + " within " + settings.runtimeFailureToleranceWindowMinutes() + " min); last: " + reason;
+        boolean firstTrip = securityState.tripAndCancel(path, tripReason, () -> event.setCancelled(true));
+        if (path == PacketSecurityState.ProtectedPath.CHUNK) {
+            packetBlockRewriteBroken.set(true);
+        }
+        if (firstTrip && failClosedScheduled.compareAndSet(false, true)) {
+            VeilScheduler.runGlobal(plugin, () -> plugin.failClosed(tripReason));
+        }
+    }
+
+    private void logToleratedFailure(PacketSecurityState.ProtectedPath path, String reason,
+            int failureCount, int maxFailures) {
+        plugin.getLogger().warning("Dropped one unprotectable " + path + " packet instead of sending it: " + reason);
+        plugin.getLogger().warning("Failure " + failureCount + " of " + maxFailures + " tolerated per "
+                + settings.runtimeFailureToleranceWindowMinutes()
+                + " minutes. Protection stays active; repeated failures will quarantine.");
+        if (path == PacketSecurityState.ProtectedPath.CHUNK) {
+            String rewriters = describeOtherChunkPacketPlugins();
+            if (!rewriters.isEmpty()) {
+                plugin.getLogger().warning("Likely cause: these plugins also modify chunk packets and one of them"
+                        + " probably produced this unreadable data: " + rewriters
+                        + ". The chunk was re-requested; if this repeats, test without them.");
+            } else {
+                plugin.getLogger().warning("The chunk was re-requested. If this repeats, please open an issue"
+                        + " with /chunkveil report attached.");
+            }
+        }
+    }
+
+    /**
+     * Names plugins with actual evidence of touching chunk packets: other
+     * ProtocolLib listeners registered for MAP_CHUNK, plus known chunk
+     * rewriters that hook the pipeline directly. Only used when a chunk
+     * failure has actually happened — never as a speculative startup warning.
+     */
+    private String describeOtherChunkPacketPlugins() {
+        java.util.Set<String> names = new java.util.TreeSet<>();
+        try {
+            for (com.comphenix.protocol.events.PacketListener registered : protocolManager.getPacketListeners()) {
+                org.bukkit.plugin.Plugin owner = registered.getPlugin();
+                if (owner == null || owner.equals(plugin)) {
+                    continue;
+                }
+                if (registered.getSendingWhitelist() != null
+                        && registered.getSendingWhitelist().getTypes().contains(PacketType.Play.Server.MAP_CHUNK)) {
+                    names.add(owner.getName());
+                }
+            }
+        } catch (Throwable ignored) {
+            // Best-effort diagnostics only.
+        }
+        for (String known : new String[] {"Orebfuscator", "RayTraceAntiXray", "raytraced-antixray"}) {
+            org.bukkit.plugin.Plugin candidate = Bukkit.getPluginManager().getPlugin(known);
+            if (candidate != null) {
+                names.add(candidate.getName());
+            }
+        }
+        return String.join(", ", names);
+    }
+
+    private void requestChunkResend(World world, int chunkX, int chunkZ) {
+        VeilScheduler.runOnRegion(plugin, world, chunkX, chunkZ, () -> {
+            if (!securityState.isTripped() && world.isChunkLoaded(chunkX, chunkZ)) {
+                // The re-sent packet is freshly serialized and passes through
+                // the rewrite again, so the viewer gets the chunk properly
+                // protected a moment later instead of keeping a hole.
+                world.refreshChunk(chunkX, chunkZ);
+            }
+        });
+    }
+
+    int recentToleratedFailures() {
+        if (securityState.isTripped()) {
+            return 0;
+        }
+        return securityState.recentFailureCount(System.currentTimeMillis(),
+                settings.runtimeFailureToleranceWindowMillis());
     }
 
     private String packetCompatibilityFailure(String action, Throwable throwable) {

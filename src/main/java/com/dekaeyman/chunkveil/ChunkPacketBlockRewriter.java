@@ -377,7 +377,8 @@ final class ChunkPacketBlockRewriter {
 
         private void require(int bytes) {
             if (bytes < 0 || index + bytes > data.length) {
-                throw new IllegalArgumentException("Chunk packet buffer ended early");
+                throw new IllegalArgumentException("Chunk packet buffer ended early (needed " + bytes
+                        + " byte(s) at offset " + index + " of " + data.length + ")");
             }
         }
     }

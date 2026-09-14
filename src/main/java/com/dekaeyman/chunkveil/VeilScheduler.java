@@ -73,6 +73,11 @@ final class VeilScheduler {
                 initialDelayTicks * MILLIS_PER_TICK, periodTicks * MILLIS_PER_TICK, TimeUnit.MILLISECONDS)::cancel;
     }
 
+    /** Runs on the thread owning the given chunk's region (the main thread on Paper). */
+    static void runOnRegion(Plugin plugin, World world, int chunkX, int chunkZ, Runnable task) {
+        Bukkit.getRegionScheduler().execute(plugin, world, chunkX, chunkZ, task);
+    }
+
     /**
      * Schedules onto the entity's owning thread for the next tick. Never runs
      * inline, matching the defer-by-one-tick semantics packet callbacks rely

@@ -48,4 +48,29 @@ final class PacketSecurityStateTest {
         assertEquals(PacketSecurityState.ProtectedPath.CHUNK, state.failure().path());
         assertEquals("first", state.failure().reason());
     }
+
+    @Test
+    void thresholdOfOneCrossesOnFirstFailure() {
+        PacketSecurityState state = new PacketSecurityState();
+        assertTrue(state.recordFailure(1_000L, 1, 600_000L), "strict threshold must trip immediately");
+    }
+
+    @Test
+    void failuresBelowThresholdAreTolerated() {
+        PacketSecurityState state = new PacketSecurityState();
+        assertFalse(state.recordFailure(1_000L, 3, 600_000L));
+        assertFalse(state.recordFailure(2_000L, 3, 600_000L));
+        assertEquals(2, state.recentFailureCount(2_000L, 600_000L));
+        assertTrue(state.recordFailure(3_000L, 3, 600_000L), "the third failure inside the window must cross");
+    }
+
+    @Test
+    void failuresOutsideTheWindowExpire() {
+        PacketSecurityState state = new PacketSecurityState();
+        assertFalse(state.recordFailure(1_000L, 3, 10_000L));
+        assertFalse(state.recordFailure(2_000L, 3, 10_000L));
+        // Both earlier failures are older than the window by now.
+        assertFalse(state.recordFailure(20_000L, 3, 10_000L), "expired failures must not count toward the threshold");
+        assertEquals(1, state.recentFailureCount(20_000L, 10_000L));
+    }
 }

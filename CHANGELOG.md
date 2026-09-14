@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0-rc.4
+
+A running server is never taken down by a single bad packet anymore. Motivated by a Canvas 26.2 field report where one malformed chunk packet (out of 2.5 million, produced by one of three simultaneously installed anti-xray plugins) tripped the quarantine and kicked a full server.
+
+- Added runtime failure tolerance (`security.runtime-failure-tolerance`, default 5 failures per 10 minutes): a packet that cannot be protected is dropped instead of sent — nothing unprotected ever leaves the server — the chunk is re-requested so the viewer gets it properly protected moments later, and protection keeps running. Only repeated failures within the window apply the configured `runtime-trip-action`, because that pattern means something is systematically wrong. The strict preset sets `max-failures: 1` to keep trip-on-first-failure. Startup behavior is unchanged: boot-time incompatibilities still stop the server under the strict startup policy.
+- Tolerated failures are logged with real diagnostics — the parse position and buffer size for chunk data ("buffer ended early" now says where and how much) — and, for chunk failures, the log names plugins with actual evidence of modifying chunk packets (other MAP_CHUNK listeners, known rewriters like Orebfuscator) as the likely cause. No speculative startup warnings: conflicts are named only when a failure has actually happened.
+- `/chunkveil verify` reports tolerated failures within the current window as a warning while confirming protection is still active. Packet-path health recovers to ENFORCED after a successful rewrite instead of showing FAILED forever.
+- Closed a fail-open gap: after a legacy multi-block-change rewrite failure, subsequent multi-block packets were skipped unrewritten while protection appeared active. Every failing packet is now cancelled and counted instead.
+
 ## 1.1.0-rc.3
 
 - Stopped thread-check log spam (and the resulting TPS stutter) on Folia-family servers when other plugins flush packets from their own threads, reported on Canvas 26.2 with TAB and FancyHolograms. Asking ProtocolLib to resolve the live entity for a spawn packet performs a server-internal entity lookup, which regionized servers reject on foreign threads and log with a full stack trace on every queued spawn packet. On Folia-family servers the entity-spawn handler now works purely from the packet's own id, uuid, position, and type and never resolves the live entity; this was already the tested fallback path, and it is the data the client actually receives. Paper keeps its existing behavior unchanged. With this, the packet listener's entire surface is packet data, static registry data, plain field reads, and thread-safe scheduler calls, so it is safe no matter which thread another plugin flushes a connection from.

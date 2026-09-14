@@ -33,6 +33,17 @@ security:
   # otherwise sit in a frozen, empty world that looks like a crashed server,
   # while a kick tells them clearly that protection failed.
   runtime-trip-action: QUARANTINE
+  # Tolerance for rare runtime packet failures, usually caused by another
+  # packet-rewriting plugin producing data ChunkVeil cannot safely read.
+  # A tolerated failure drops only that one packet (nothing unprotected is
+  # ever sent) and re-requests the chunk, so the server keeps running with
+  # protection active. Only max-failures within window-minutes triggers the
+  # runtime-trip-action above, because that pattern means something is
+  # systematically wrong. Set max-failures: 1 to trip on the first failure
+  # (the strict preset behavior).
+  runtime-failure-tolerance:
+    max-failures: 5
+    window-minutes: 10
 
 worlds:
   world:

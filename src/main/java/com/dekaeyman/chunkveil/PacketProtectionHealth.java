@@ -43,6 +43,10 @@ final class PacketProtectionHealth {
         Channel channel = channels.get(path);
         channel.enforced.increment();
         channel.lastEnforcedMillis.set(System.currentTimeMillis());
+        // A successful enforcement after a tolerated failure means the path
+        // recovered; FAILED status should not stick forever. The last-failure
+        // timestamp is retained for diagnostics.
+        channel.failure = null;
     }
 
     void failed(PacketSecurityState.ProtectedPath path, String reason) {

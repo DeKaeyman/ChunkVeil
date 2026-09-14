@@ -42,6 +42,8 @@ record VeilSettings(
         boolean cancelParticlesInHiddenZones,
         boolean cancelVibrationsInHiddenZones,
         boolean sanitizeLightInHiddenZones,
+        int runtimeFailureToleranceMaxFailures,
+        int runtimeFailureToleranceWindowMinutes,
         List<String> validationWarnings
 ) {
     static VeilSettings load(Plugin plugin) {
@@ -126,6 +128,9 @@ record VeilSettings(
         if (!Set.of("QUARANTINE", "KICK_PLAYERS", "STOP_SERVER").contains(runtimeTripAction)) {
             validationWarnings.add("security.runtime-trip-action must be QUARANTINE, KICK_PLAYERS, or STOP_SERVER.");
         }
+        ConfigurationSection failureTolerance = config.getConfigurationSection("security.runtime-failure-tolerance");
+        int runtimeFailureToleranceMaxFailures = Math.max(1, intValue(failureTolerance, "max-failures", 5));
+        int runtimeFailureToleranceWindowMinutes = Math.max(1, intValue(failureTolerance, "window-minutes", 10));
         if (sanitizeLightInHiddenZones) {
             for (Map.Entry<String, VeilWorldSettings> entry : worlds.entrySet()) {
                 VeilWorldSettings worldSettings = entry.getValue();
@@ -198,8 +203,14 @@ record VeilSettings(
                 cancelParticlesInHiddenZones,
                 cancelVibrationsInHiddenZones,
                 sanitizeLightInHiddenZones,
+                runtimeFailureToleranceMaxFailures,
+                runtimeFailureToleranceWindowMinutes,
                 List.copyOf(validationWarnings)
         );
+    }
+
+    long runtimeFailureToleranceWindowMillis() {
+        return runtimeFailureToleranceWindowMinutes * 60_000L;
     }
 
     boolean isEnabledWorld(World world) {

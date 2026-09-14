@@ -262,6 +262,11 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return protocolChunkListener == null ? null : protocolChunkListener.securityTripPath();
     }
 
+    /** Tolerated (dropped, not tripped) packet failures within the current window. */
+    int recentToleratedPacketFailures() {
+        return protocolChunkListener == null ? 0 : protocolChunkListener.recentToleratedFailures();
+    }
+
     PacketProtectionHealth.Snapshot packetHealth(PacketSecurityState.ProtectedPath... paths) {
         return protocolChunkListener == null
                 ? new PacketProtectionHealth.Snapshot(PacketProtectionHealth.Status.DISABLED, 0L, 0L, 0L, 0L, 0L, null)

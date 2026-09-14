@@ -6,6 +6,11 @@ Use this posture when preventing underground disclosure matters more than visual
 security:
   stop-server-on-startup-failure: true
   runtime-trip-action: STOP_SERVER
+  # Strict posture: quarantine on the very first runtime packet failure
+  # instead of tolerating rare one-off failures from other plugins.
+  runtime-failure-tolerance:
+    max-failures: 1
+    window-minutes: 10
 
 worlds:
   world:

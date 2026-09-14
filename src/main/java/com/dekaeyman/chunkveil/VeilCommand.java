@@ -336,6 +336,14 @@ final class VeilCommand implements TabExecutor {
                     + ". Protected packet traffic is quarantined; real chunks were not restored.");
         } else {
             verifyLine(sender, okBadge(), "Security state has not tripped since this runtime started.");
+            int tolerated = plugin.recentToleratedPacketFailures();
+            if (tolerated > 0 && settings != null) {
+                warnings++;
+                verifyLine(sender, warnBadge(), tolerated + " unprotectable packet(s) were dropped within the last "
+                        + settings.runtimeFailureToleranceWindowMinutes() + " minutes (tolerated, threshold "
+                        + settings.runtimeFailureToleranceMaxFailures() + "). Usually another packet-rewriting"
+                        + " plugin; protection remains active. Check the log for the named likely cause.");
+            }
         }
 
         String lastFailure = plugin.lastCriticalFailureReason();
