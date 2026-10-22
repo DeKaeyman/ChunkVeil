@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -147,6 +148,138 @@ final class ChunkPacketBlockRewriterTest {
     }
 
     // ---------------------------------------------------------------
+    // cave_air / void_air are air (vanilla BlockState#isAir)
+    // ---------------------------------------------------------------
+
+    private static final int CAVE_AIR = 13;
+    private static final int VOID_AIR = 12;
+
+    private static ChunkPacketBlockRewriter allAirRewriter() {
+        return new ChunkPacketBlockRewriter(FAKE, new int[]{AIR, CAVE_AIR, VOID_AIR}, false, false);
+    }
+
+    private static int[] mixedAirSection() {
+        // Carver caves are cave_air, noise caves plain air; both must behave
+        // the same under hide-air: false.
+        int[] states = filled(STONE);
+        for (int i = 0; i < 256; i++) {
+            states[i] = AIR;
+        }
+        for (int i = 256; i < 768; i++) {
+            states[i] = CAVE_AIR;
+        }
+        for (int i = 768; i < 800; i++) {
+            states[i] = VOID_AIR;
+        }
+        states[1000] = DIAMOND_ORE;
+        return states;
+    }
+
+    @Test
+    void caveAirAndVoidAirStayAirWithHideAirDisabled() {
+        int[] states = mixedAirSection();
+        byte[] buffer = buffer(false, section(false, states));
+
+        ChunkPacketBlockRewriter.RewriteResult result = allAirRewriter().rewriteBuffer(buffer, 0, 16, 16, false);
+
+        DecodedSection hidden = decode(result.buffer(), 1, false).get(0);
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            boolean airLike = states[i] == AIR || states[i] == CAVE_AIR || states[i] == VOID_AIR;
+            int expected = airLike ? states[i] : FAKE;
+            assertEquals(expected, hidden.states[i], "index " + i);
+        }
+        // Non-empty count follows vanilla isAir: all three air kinds excluded.
+        assertEquals(BLOCKS_PER_SECTION - 800, hidden.nonEmptyCount);
+    }
+
+    @Test
+    void caveAirAndVoidAirAreHiddenWithHideAirEnabled() {
+        byte[] buffer = buffer(false, section(false, mixedAirSection()));
+
+        ChunkPacketBlockRewriter.RewriteResult result = allAirRewriter().rewriteBuffer(buffer, 0, 16, 16, true);
+
+        DecodedSection hidden = decode(result.buffer(), 1, false).get(0);
+        assertAllStates(hidden, FAKE);
+        assertEquals(BLOCKS_PER_SECTION, hidden.nonEmptyCount);
+    }
+
+    @Test
+    void airStateIdsAreRequired() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new ChunkPacketBlockRewriter(FAKE, new int[0], false, false));
+    }
+
+    // ---------------------------------------------------------------
+    // Configured min-y (concealed band above the world bottom)
+    // ---------------------------------------------------------------
+
+    @Test
+    void sectionsBelowMinYStayVisible() {
+        // min-y -32 on a -64..64 world: only -32..-1 is concealed. Hiding
+        // -64..-33 here would disagree with block updates, block entities, and
+        // light below min-y, which are all sent unconcealed.
+        int[] stone = filled(STONE);
+        byte[][] sections = new byte[8][];
+        for (int i = 0; i < 8; i++) {
+            sections[i] = section(false, stone);
+        }
+
+        ChunkPacketBlockRewriter.RewriteResult result =
+                rewriter(false).rewriteBuffer(buffer(false, sections), -64, 64, -32, 0, false);
+
+        assertEquals(2, result.hiddenSections());
+        List<DecodedSection> decoded = decode(result.buffer(), 8, false);
+        assertAllStates(decoded.get(0), STONE);
+        assertAllStates(decoded.get(1), STONE);
+        assertAllStates(decoded.get(2), FAKE);
+        assertAllStates(decoded.get(3), FAKE);
+        for (int i = 4; i < 8; i++) {
+            assertAllStates(decoded.get(i), STONE);
+        }
+    }
+
+    @Test
+    void minYInsideASectionHidesOnlyTheBand() {
+        byte[] buffer = buffer(false, section(false, filled(STONE)));
+
+        ChunkPacketBlockRewriter.RewriteResult result =
+                rewriter(false).rewriteBuffer(buffer, 0, 16, 4, 12, false);
+
+        assertEquals(1, result.hiddenSections());
+        DecodedSection section = decode(result.buffer(), 1, false).get(0);
+        for (int index = 0; index < BLOCKS_PER_SECTION; index++) {
+            int localY = index >> 8;
+            int expected = localY >= 4 && localY < 12 ? FAKE : STONE;
+            assertEquals(expected, section.states[index], "block index " + index + " at local y " + localY);
+        }
+    }
+
+    @Test
+    void minYBelowWorldBottomIsClampedToTheBottom() {
+        // An End-like world starting at y=0 with the overworld default min-y -64.
+        byte[] buffer = buffer(false, section(false, filled(STONE)), section(false, filled(STONE)));
+
+        ChunkPacketBlockRewriter.RewriteResult result =
+                rewriter(false).rewriteBuffer(buffer, 0, 32, -64, 16, false);
+
+        assertEquals(1, result.hiddenSections());
+        List<DecodedSection> decoded = decode(result.buffer(), 2, false);
+        assertAllStates(decoded.get(0), FAKE);
+        assertAllStates(decoded.get(1), STONE);
+    }
+
+    @Test
+    void emptyConcealedBandLeavesBufferUntouched() {
+        byte[] buffer = buffer(false, section(false, filled(STONE)));
+
+        ChunkPacketBlockRewriter.RewriteResult result =
+                rewriter(false).rewriteBuffer(buffer, 0, 16, 8, 8, false);
+
+        assertEquals(0, result.hiddenSections());
+        assertSame(buffer, result.buffer());
+    }
+
+    // ---------------------------------------------------------------
     // Palette variants
     // ---------------------------------------------------------------
 
@@ -230,6 +363,102 @@ final class ChunkPacketBlockRewriterTest {
         assertAllStates(sections.get(0), FAKE);
         assertEquals(BLOCKS_PER_SECTION, sections.get(0).nonEmptyCount);
         assertAllStates(sections.get(1), STONE);
+    }
+
+    // ---------------------------------------------------------------
+    // Pre-1.21.5 length-prefixed data arrays (1.21 - 1.21.4)
+    // ---------------------------------------------------------------
+
+    private static ChunkPacketBlockRewriter prefixedRewriter() {
+        return new ChunkPacketBlockRewriter(FAKE, AIR, false, true);
+    }
+
+    @Test
+    void rewritesLengthPrefixedFormatForAllPaletteKinds() {
+        int[] indirect = new int[BLOCKS_PER_SECTION];
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            indirect[i] = i % 3 == 0 ? AIR : (i % 3 == 1 ? STONE : DIAMOND_ORE);
+        }
+        int[] direct = new int[BLOCKS_PER_SECTION];
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            direct[i] = i + 1;
+        }
+        byte[] buffer = concat(
+                prefixedSection(filled(STONE), singleValueBiomeContainer(true)),
+                prefixedSection(indirect, singleValueBiomeContainer(true)),
+                prefixedSection(direct, multiBiomeContainer(true)),
+                prefixedSection(filled(STONE), singleValueBiomeContainer(true)));
+
+        ChunkPacketBlockRewriter.RewriteResult result = prefixedRewriter().rewriteBuffer(buffer, 0, 64, 48, false);
+
+        assertEquals(3, result.hiddenSections());
+        // The prefixed decoder asserts every declared length and that the
+        // whole buffer is consumed, so a missing or wrong prefix fails here.
+        List<DecodedSection> decoded = decode(result.buffer(), 4, false, true);
+        assertAllStates(decoded.get(0), FAKE);
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            assertEquals(indirect[i] == AIR ? AIR : FAKE, decoded.get(1).states[i], "index " + i);
+        }
+        assertAllStates(decoded.get(2), FAKE);
+        assertAllStates(decoded.get(3), STONE);
+    }
+
+    @Test
+    void lengthPrefixedVisibleSectionsPassThroughByteIdentical() {
+        int[] mixed = new int[BLOCKS_PER_SECTION];
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            mixed[i] = i % 7 == 0 ? DIAMOND_ORE : STONE;
+        }
+        byte[] visibleSection = prefixedSection(mixed, multiBiomeContainer(true));
+        byte[] buffer = concat(prefixedSection(filled(STONE), singleValueBiomeContainer(true)), visibleSection);
+
+        ChunkPacketBlockRewriter.RewriteResult result = prefixedRewriter().rewriteBuffer(buffer, 0, 32, 16, false);
+
+        byte[] tail = Arrays.copyOfRange(result.buffer(), result.buffer().length - visibleSection.length, result.buffer().length);
+        assertArrayEquals(visibleSection, tail);
+    }
+
+    @Test
+    void lengthPrefixedRewriteIsIdempotent() {
+        int[] states = filled(STONE);
+        for (int i = 0; i < 256; i++) {
+            states[i] = AIR;
+        }
+        byte[] buffer = prefixedSection(states, singleValueBiomeContainer(true));
+
+        byte[] once = prefixedRewriter().rewriteBuffer(buffer, 0, 16, 16, false).buffer();
+        byte[] twice = prefixedRewriter().rewriteBuffer(once, 0, 16, 16, false).buffer();
+
+        assertArrayEquals(once, twice);
+    }
+
+    @Test
+    void wrongFormatFailsLoudlyInsteadOfMisparsing() {
+        int[] indirect = new int[BLOCKS_PER_SECTION];
+        for (int i = 0; i < BLOCKS_PER_SECTION; i++) {
+            indirect[i] = i % 2 == 0 ? STONE : DIAMOND_ORE;
+        }
+        byte[] modern = section(false, indirect);
+        byte[] legacy = prefixedSection(indirect, singleValueBiomeContainer(true));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> prefixedRewriter().rewriteBuffer(modern, 0, 16, 16, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> rewriter(false).rewriteBuffer(legacy, 0, 16, 16, false));
+    }
+
+    @Test
+    void lengthPrefixIsUsedBeforeMinecraft1_21_5() {
+        assertTrue(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21"));
+        assertTrue(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21.1"));
+        assertTrue(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21.4"));
+        assertTrue(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.20.6"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21.5"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21.8"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("1.21.11"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("26.1.2"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed("26.2"));
+        assertFalse(ChunkPacketBlockRewriter.dataArrayLengthPrefixed(null));
     }
 
     // ---------------------------------------------------------------
@@ -360,18 +589,31 @@ final class ChunkPacketBlockRewriterTest {
         return sectionWithBiomes(leInt, states, singleValueBiomeContainer());
     }
 
+    /** Pre-1.21.5 section: every container's data array carries a VarInt length. */
+    private static byte[] prefixedSection(int[] states, byte[] biomeContainer) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeCount(out, nonEmpty(states), false);
+        writeBlockContainer(out, states, true);
+        out.writeBytes(biomeContainer);
+        return out.toByteArray();
+    }
+
     private static byte[] sectionWithBiomes(boolean leInt, int[] states, byte[] biomeContainer) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeCount(out, nonEmpty(states), leInt);
+        writeBlockContainer(out, states, false);
+        out.writeBytes(biomeContainer);
+        return out.toByteArray();
+    }
+
+    private static int nonEmpty(int[] states) {
         int nonEmpty = 0;
         for (int state : states) {
             if (state != AIR) {
                 nonEmpty++;
             }
         }
-        writeCount(out, nonEmpty, leInt);
-        writeBlockContainer(out, states);
-        out.writeBytes(biomeContainer);
-        return out.toByteArray();
+        return nonEmpty;
     }
 
     private static void writeCount(ByteArrayOutputStream out, int count, boolean leInt) {
@@ -386,16 +628,19 @@ final class ChunkPacketBlockRewriterTest {
         }
     }
 
-    private static void writeBlockContainer(ByteArrayOutputStream out, int[] states) {
+    private static void writeBlockContainer(ByteArrayOutputStream out, int[] states, boolean prefixed) {
         List<Integer> palette = distinct(states);
         if (palette.size() == 1) {
             out.write(0);
             writeVarInt(out, palette.get(0));
+            if (prefixed) {
+                writeVarInt(out, 0);
+            }
             return;
         }
         if (palette.size() <= 256) {
             int bits = Math.max(4, bitsNeeded(palette.size() - 1));
-            writeIndirectBlockContainer(out, states, bits);
+            writeIndirectBlockContainer(out, states, bits, prefixed);
             return;
         }
         int maxState = 0;
@@ -404,10 +649,14 @@ final class ChunkPacketBlockRewriterTest {
         }
         int bits = Math.max(9, bitsNeeded(maxState));
         out.write(bits);
-        writePacked(out, states, bits, null);
+        writePacked(out, states, bits, null, prefixed);
     }
 
     private static void writeIndirectBlockContainer(ByteArrayOutputStream out, int[] states, int bits) {
+        writeIndirectBlockContainer(out, states, bits, false);
+    }
+
+    private static void writeIndirectBlockContainer(ByteArrayOutputStream out, int[] states, int bits, boolean prefixed) {
         List<Integer> palette = distinct(states);
         out.write(bits);
         writeVarInt(out, palette.size());
@@ -416,17 +665,28 @@ final class ChunkPacketBlockRewriterTest {
             writeVarInt(out, palette.get(i));
             indexOf.put(palette.get(i), i);
         }
-        writePacked(out, states, bits, indexOf);
+        writePacked(out, states, bits, indexOf, prefixed);
     }
 
     private static byte[] singleValueBiomeContainer() {
+        return singleValueBiomeContainer(false);
+    }
+
+    private static byte[] singleValueBiomeContainer(boolean prefixed) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0);
         writeVarInt(out, 0);
+        if (prefixed) {
+            writeVarInt(out, 0);
+        }
         return out.toByteArray();
     }
 
     private static byte[] multiBiomeContainer() {
+        return multiBiomeContainer(false);
+    }
+
+    private static byte[] multiBiomeContainer(boolean prefixed) {
         // Indirect biome palette: 2 bits, 4 biomes, 64 entries.
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(2);
@@ -438,7 +698,7 @@ final class ChunkPacketBlockRewriterTest {
         for (int i = 0; i < entries.length; i++) {
             entries[i] = i % 4;
         }
-        writePackedEntries(out, entries, 2);
+        writePackedEntries(out, entries, 2, prefixed);
         return out.toByteArray();
     }
 
@@ -452,17 +712,21 @@ final class ChunkPacketBlockRewriterTest {
         return palette;
     }
 
-    private static void writePacked(ByteArrayOutputStream out, int[] states, int bits, Map<Integer, Integer> paletteIndex) {
+    private static void writePacked(ByteArrayOutputStream out, int[] states, int bits, Map<Integer, Integer> paletteIndex,
+            boolean prefixed) {
         int[] entries = new int[states.length];
         for (int i = 0; i < states.length; i++) {
             entries[i] = paletteIndex == null ? states[i] : paletteIndex.get(states[i]);
         }
-        writePackedEntries(out, entries, bits);
+        writePackedEntries(out, entries, bits, prefixed);
     }
 
-    private static void writePackedEntries(ByteArrayOutputStream out, int[] entries, int bits) {
+    private static void writePackedEntries(ByteArrayOutputStream out, int[] entries, int bits, boolean prefixed) {
         int entriesPerLong = 64 / bits;
         int longCount = (entries.length + entriesPerLong - 1) / entriesPerLong;
+        if (prefixed) {
+            writeVarInt(out, longCount);
+        }
         long[] packed = new long[longCount];
         for (int i = 0; i < entries.length; i++) {
             int longIndex = i / entriesPerLong;
@@ -507,22 +771,30 @@ final class ChunkPacketBlockRewriterTest {
     }
 
     private static List<DecodedSection> decode(byte[] buffer, int sectionCount, boolean leInt) {
+        return decode(buffer, sectionCount, leInt, false);
+    }
+
+    private static List<DecodedSection> decode(byte[] buffer, int sectionCount, boolean leInt, boolean prefixed) {
         Cursor cursor = new Cursor(buffer);
         List<DecodedSection> sections = new ArrayList<>();
         for (int s = 0; s < sectionCount; s++) {
             DecodedSection section = new DecodedSection();
             section.nonEmptyCount = leInt ? cursor.readLeInt() : cursor.readBeShort();
-            decodeContainer(cursor, section.states, 8);
-            decodeContainer(cursor, new int[64], 3);
+            decodeContainer(cursor, section.states, 8, prefixed);
+            decodeContainer(cursor, new int[64], 3, prefixed);
             sections.add(section);
         }
+        assertEquals(buffer.length, cursor.index, "decoder must consume the whole buffer");
         return sections;
     }
 
-    private static void decodeContainer(Cursor cursor, int[] target, int maxIndirectBits) {
+    private static void decodeContainer(Cursor cursor, int[] target, int maxIndirectBits, boolean prefixed) {
         int bits = cursor.readByte();
         if (bits == 0) {
             Arrays.fill(target, cursor.readVarInt());
+            if (prefixed) {
+                assertEquals(0, cursor.readVarInt(), "single-value container declares an empty data array");
+            }
             return;
         }
 
@@ -537,6 +809,9 @@ final class ChunkPacketBlockRewriterTest {
 
         int entriesPerLong = 64 / bits;
         int longCount = (target.length + entriesPerLong - 1) / entriesPerLong;
+        if (prefixed) {
+            assertEquals(longCount, cursor.readVarInt(), "declared data array length");
+        }
         long mask = (1L << bits) - 1;
         for (int longIndex = 0; longIndex < longCount; longIndex++) {
             long value = cursor.readLong();

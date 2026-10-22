@@ -60,6 +60,63 @@ final class LightPacketSanitizerTest {
     }
 
     @Test
+    void sectionsBelowMinYKeepTheirLight() {
+        // World -64..; min-y -32, cutoff 0. Mask index i covers section
+        // (-64/16 + i - 1) * 16: index 1 = -64..-48, 2 = -48..-32,
+        // 3 = -32..-16, 4 = -16..0, 5 = 0..16.
+        BitSet mask = bits(1, 2, 3, 4, 5);
+        List<byte[]> sky = updates(5, (byte) 0x7F);
+
+        int changed = LightPacketSanitizer.sanitize(mask, sky, new BitSet(), new ArrayList<>(), -64, -32, 0);
+
+        assertEquals(2, changed);
+        assertArrayEquals(filled((byte) 0x7F), sky.get(0), "below min-y is not concealed");
+        assertArrayEquals(filled((byte) 0x7F), sky.get(1), "below min-y is not concealed");
+        assertArrayEquals(new byte[2048], sky.get(2));
+        assertArrayEquals(new byte[2048], sky.get(3));
+        assertArrayEquals(filled((byte) 0x7F), sky.get(4), "above the cutoff");
+    }
+
+    @Test
+    void sectionCrossedByAnUnalignedMinYIsDarkened() {
+        // min-y -40: section -48..-32 holds concealed blocks -40..-32, so its
+        // light must not be sent (fail closed); -64..-48 stays.
+        BitSet mask = bits(1, 2, 3);
+        List<byte[]> sky = updates(3, (byte) 0x7F);
+
+        int changed = LightPacketSanitizer.sanitize(mask, sky, new BitSet(), new ArrayList<>(), -64, -40, 0);
+
+        assertEquals(2, changed);
+        assertArrayEquals(filled((byte) 0x7F), sky.get(0), "entirely below min-y");
+        assertArrayEquals(new byte[2048], sky.get(1), "crossed by min-y");
+        assertArrayEquals(new byte[2048], sky.get(2));
+    }
+
+    @Test
+    void lightSectionBelowTheWorldIsSanitizedWhenBandStartsAtBottom() {
+        // Mask index 0 is the extra light section under the world bottom; it
+        // can carry light bleeding from the lowest concealed section.
+        BitSet mask = bits(0);
+        List<byte[]> sky = updates(1, (byte) 0x0F);
+
+        int changed = LightPacketSanitizer.sanitize(mask, sky, new BitSet(), new ArrayList<>(), -64, -64, 0);
+
+        assertEquals(1, changed);
+        assertArrayEquals(new byte[2048], sky.get(0));
+    }
+
+    @Test
+    void lightSectionBelowTheWorldIsKeptWhenMinYIsHigher() {
+        BitSet mask = bits(0);
+        List<byte[]> sky = updates(1, (byte) 0x0F);
+
+        int changed = LightPacketSanitizer.sanitize(mask, sky, new BitSet(), new ArrayList<>(), -64, -32, 0);
+
+        assertEquals(0, changed);
+        assertArrayEquals(filled((byte) 0x0F), sky.get(0));
+    }
+
+    @Test
     void rejectsMaskAndDataMismatch() {
         assertThrows(IllegalArgumentException.class, () -> LightPacketSanitizer.sanitize(
                 bits(1, 2), updates(1, (byte) 1), new BitSet(), new ArrayList<>(), 0, 64));

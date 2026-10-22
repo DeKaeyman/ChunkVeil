@@ -35,6 +35,7 @@ commands:
     enable: "/{label} enable"
     debug: "/{label} debug <on|off>"
     version: "/{label} version"
+    metrics: "/{label} metrics (raw counters for scripts)"
 
   status:
     title: "&3&m                                "
@@ -64,7 +65,7 @@ commands:
     updates-block-entities: "{badge} &7Block entity updates cancelled: &f{block_entities}"
     entities: "{badge} &7Entity spawns cancelled: &f{spawns}&7, follow-up packets cancelled: &f{packets}"
     secondary-packets: "{badge} &7Secondary protection: explosions=&f{explosions}&7, events=&f{events}&7, cracks=&f{cracks}&7, sounds=&f{sounds}&7, particles=&f{particles}&7, vibrations=&f{vibrations}&7, light=&f{light}&7, quarantined=&f{security}"
-    timing: "{badge} &7{metric}: avg=&f{avg}ms&7, max=&f{max}ms&7, samples=&f{samples}"
+    timing: "{badge} &7{metric}: avg=&f{avg}ms&7, max (last 5 min)=&f{max}ms&7, samples=&f{samples}"
 
   verify:
     title: "&3&m                                "
@@ -108,7 +109,7 @@ commands:
     disclaimer: "{badge} &eExperimental estimate based on current-session timings and fixed activity assumptions. This is not a guaranteed player capacity."
     usage: "&cUsage: &f/chunkveil predict <players> <ramGb> <cpuTier> [viewDistance]&7. cpuTier is single-core strength: &flow&7, &fmid&7, &fhigh&7, or &ftop&7. Prediction needs live timing samples first."
     not-ready: "{badge} &cNot enough live timing data yet. Move players around, load chunks, then try again."
-    samples: "{badge} &7Samples: reveal=&f{reveal}&7/&f{required_reveal}&7, chunkUpdateMask=&f{chunk_mask}&7/&f{required_chunk_mask}&7, entity=&f{entity}&7/&f{required_entity}&7, queue=&f{queue}&7/&f{required_queue}"
+    samples: "{badge} &7Samples: reveal=&f{reveal}&7/&f{required_reveal}&7, entity=&f{entity}&7/&f{required_entity}&7, queue=&f{queue}&7/&f{required_queue}"
     input: "{badge} &7Input: &f{players} players&7, &f{ram}GB RAM&7, CPU tier &f{cpu_tier}&7, view distance &f{view_distance}"
     estimate: "{badge} &7Estimated ChunkVeil CPU load: &f{load}%"
     tick-cost: "{badge} &7Estimated main-tick budget use: &f{tick}ms / 50ms"
@@ -142,7 +143,7 @@ commands:
 
   disable:
     already: "Runtime is already disabled."
-    done: "Runtime disabled. Restored &f{players}&7 players and refreshed &f{chunks}&7 chunks."
+    done: "Runtime disabled. Restoring real chunks for &f{players}&7 players (&f{chunks}&7 chunks, sent over the next few seconds)."
 
   enable:
     already: "Runtime is already enabled."

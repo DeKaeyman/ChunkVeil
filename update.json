@@ -1,6 +1,23 @@
 {
     "releases": [
         {
+            "version": "1.2.0-beta.1",
+            "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.2.0-beta.1",
+            "severity": "recommended",
+            "prerelease": true,
+            "mc": [
+                {
+                    "min": "1.21",
+                    "max": "1.21"
+                },
+                {
+                    "min": "26.0",
+                    "max": "26.2"
+                }
+            ],
+            "notes": "Huge performance boost: chunk rewriting about 9x faster, reveal ray scans and entity scans about half the cost, no more chunk re-hide lag spikes, reveals sent only to the player who needs them, and reloads that no longer resend every chunk. Also fixes invisible or leaking entities, the 1.21.0-1.21.4 chunk format, cave_air handling, End defaults, and several Folia edge cases. Beta: please test and report."
+        },
+        {
             "version": "1.1.0-rc.4",
             "download": "https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.4",
             "severity": "recommended",

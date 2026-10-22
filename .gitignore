@@ -119,6 +119,15 @@ runs/
 
 # Local implementation plans
 FOLIA_TODO.md
+AUDIT_TODO.md
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle/wrapper/gradle-wrapper.jar
+
+# Stress test harness: downloaded jars, test servers, results, builds
+stress/cache/
+stress/servers/
+stress/results/
+stress/*/build/
+stress/*/.gradle/
+__pycache__/

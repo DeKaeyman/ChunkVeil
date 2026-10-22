@@ -1,0 +1,23 @@
+# ChunkVeil stress driver. Test servers only.
+
+# Players whose name starts with this are bots (prefix + role letter + number,
+# role s = surface, c = cave, i = idle). Must match the bot client --prefix.
+bot-prefix: cvb
+
+# Bots are placed and move within this many blocks of 0,0. Pre-generate at
+# least this radius plus the view distance (/stress pregen <radius>).
+radius: 700
+
+# Cave bots are teleported into underground air between these heights (keep
+# them below ChunkVeil's hide-below-y so they look into concealed terrain).
+cave-min-y: -56
+cave-max-y: -8
+
+# Cave bots jump to a new cave this often (seconds).
+cave-move-seconds: 45
+
+# Blocks each cave bot breaks around itself per second (block change load).
+# The run script sets this with /stress mine <n>.
+mine-blocks-per-second: 0
+
+seed: 1

@@ -1,7 +1,7 @@
 package com.dekaeyman.chunkveil;
 
-import io.papermc.paper.math.Position;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -14,15 +14,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.util.NumberConversions;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 final class VeilEngine {
@@ -30,13 +27,43 @@ final class VeilEngine {
     private final VeilSettings settings;
     private final VeilMetrics metrics;
     private final Map<UUID, PlayerVeilState> states = new ConcurrentHashMap<>();
-    private final Map<Material, BlockData> fakeBlockData = new ConcurrentHashMap<>();
     private final Map<DirectionCacheKey, List<Vector>> viewRevealDirectionCache = new ConcurrentHashMap<>();
     // One repeating worker per online player, on that player's entity
     // scheduler. On Paper they all run on the main thread, preserving the old
     // single-worker semantics; on Folia each runs on its owning region thread.
     private final Map<UUID, VeilScheduler.TaskHandle> playerWorkers = new ConcurrentHashMap<>();
     private volatile boolean stopped;
+
+    static final String BYPASS_PERMISSION = "chunkveil.bypass";
+    static final long BYPASS_REFRESH_MILLIS = 1000L;
+    // Kept apart from PlayerVeilState: bypassed players have no veil state.
+    private final Map<UUID, BypassEntry> bypassCache = new ConcurrentHashMap<>();
+    private final EntityTrackingRange trackingRange = new EntityTrackingRange();
+    // Folia: API hides (Paper's per-viewer hidden mark) that could not be
+    // undone yet because the entity is in another region. Paper's mark lives
+    // in a plain HashMap on the viewer, so showEntity must run on the
+    // viewer's thread, and with a live entity also where that entity is
+    // owned. The viewer's worker releases them once that holds or the entity
+    // is gone. viewer UUID -> (entity UUID -> entity object).
+    private final Map<UUID, Map<UUID, Entity>> pendingReleases = new ConcurrentHashMap<>();
+
+    // Worker-driven entity scans for viewers with nothing hidden run this many
+    // times less often than entity-scan-interval-millis.
+    private static final int IDLE_ENTITY_SCAN_MULTIPLIER = 4;
+    // Entity scans only look this far above and below the concealed band:
+    // only entities inside the band can be hidden, and hidden ones that climb
+    // out are caught while still within the margin (or by the hidden-entity
+    // pass, which does not depend on this box).
+    static final int ENTITY_BAND_MARGIN_BLOCKS = 16;
+    // Folia only: every Nth scan still covers the full height, as a safety
+    // net for packet-only hidden entities that left the margin between scans.
+    static final int FULL_HEIGHT_ENTITY_SCAN_EVERY = 8;
+    // -Dchunkveil.disableEntityBandScan=true: always scan the full height
+    // (the previous behaviour; A/B tests, emergencies).
+    static final boolean FULL_HEIGHT_ENTITY_SCANS = Boolean.getBoolean("chunkveil.disableEntityBandScan");
+    // Folia: queued reveals skipped per player tick because their chunk is
+    // owned by another region, before the tick's queue pass stops.
+    static final int MAX_DEFERRED_CHUNK_UPDATES_PER_TICK = 16;
 
     VeilEngine(Plugin plugin, VeilSettings settings, VeilMetrics metrics) {
         this.plugin = plugin;
@@ -45,10 +72,62 @@ final class VeilEngine {
     }
 
     void start() {
+        PlayerChunkRefresher.initialize(plugin.getLogger());
+        trackingRange.prime(Bukkit.getWorlds());
+        if (FastTerrain.DISABLED_BY_PROPERTY) {
+            plugin.getLogger().info("Fast block access for reveal scans disabled by -Dchunkveil.disableFastTerrain.");
+        } else if (FastTerrain.available()) {
+            plugin.getLogger().info("Fast block access for reveal scans enabled.");
+        } else {
+            plugin.getLogger().warning("Fast block access for reveal scans unavailable ("
+                    + FastTerrain.unavailableReason() + "); using the slower Bukkit path.");
+        }
+        if (VeilScheduler.folia() && settings.adaptiveScanQualityEnabled()) {
+            FoliaRegionTps.initialize(plugin.getLogger());
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             startWorker(player);
-            VeilScheduler.runOwned(plugin, player, () -> refreshPlayer(player));
+            VeilScheduler.runOwned(plugin, player, () -> {
+                adoptSentChunks(player);
+                refreshPlayer(player);
+            });
         }
+    }
+
+    /**
+     * A fresh engine (reload, /chunkveil enable) does not know what the client
+     * already holds. Recording every chunk the client has as hidden, without
+     * sending anything, means a chunk the player can see gets a normal
+     * per-player reveal, which also replaces any fake data left from before.
+     * Chunks the player cannot see keep whatever the client already has —
+     * the same "already disclosed" rule as chunks leaving view.
+     */
+    private void adoptSentChunks(Player player) {
+        World world = player.getWorld();
+        if (stopped || !settings.isEnabledWorld(world) || !settings.hasConcealedBand(world) || isBypassed(player)) {
+            return;
+        }
+        PlayerVeilState state = stateFor(player);
+        String worldName = world.getName();
+        for (Chunk chunk : player.getSentChunks()) {
+            if (chunk.getWorld().equals(world)) {
+                state.markChunkHiddenWithoutSending(ChunkKey.of(worldName, chunk.getX(), chunk.getZ()));
+            }
+        }
+    }
+
+    /**
+     * Resends, per player and spread over ticks, every sent chunk in worlds
+     * whose concealment settings changed. Without this the client could keep
+     * fake blocks where the new settings expose real ones (e.g. a world
+     * disabled or a lower cutoff), which would show up as ghost blocks.
+     */
+    void resendChunksInWorlds(Set<String> worldNames) {
+        if (worldNames.isEmpty()) {
+            return;
+        }
+        VeilScheduler.forEachOnlinePlayerOwned(plugin, player -> SentChunkResender.resend(
+                plugin, player, world -> worldNames.contains(world.getName())));
     }
 
     void stop() {
@@ -69,6 +148,8 @@ final class VeilEngine {
             // those viewers keep entities hidden until re-track or rejoin.
         }
         states.clear();
+        bypassCache.clear();
+        pendingReleases.clear();
     }
 
     /** Stops background work after a security trip without revealing anything. */
@@ -76,6 +157,8 @@ final class VeilEngine {
         stopped = true;
         cancelAllWorkers();
         states.clear();
+        bypassCache.clear();
+        pendingReleases.clear();
     }
 
     VeilRestoreResult restoreAllPlayersToRealChunks() {
@@ -87,18 +170,22 @@ final class VeilEngine {
         for (Player player : Bukkit.getOnlinePlayers()) {
             PlayerVeilState state = states.get(player.getUniqueId());
             restoredPlayers++;
-            // Inline on Paper, so the chunk count is synchronously exact; on
+            // Inline on Paper, so the scheduled chunk count is exact; on
             // Folia each restore runs on its owning region and the returned
-            // count stays at whatever completed before this method returns.
+            // count stays at whatever was scheduled before this returns.
             VeilScheduler.runOwned(plugin, player, () -> {
                 if (state != null) {
                     revealHiddenEntities(player, state);
                     state.clear();
                 }
-                refreshedChunks.addAndGet(refreshSentChunks(player));
+                // Per player and spread over ticks; the packet listener is
+                // already removed, so these resends carry real data.
+                refreshedChunks.addAndGet(SentChunkResender.resend(plugin, player, settings::isEnabledWorld));
             });
         }
         states.clear();
+        bypassCache.clear();
+        pendingReleases.clear();
         return new VeilRestoreResult(restoredPlayers, refreshedChunks.get());
     }
 
@@ -163,6 +250,8 @@ final class VeilEngine {
         if (stopped) {
             return;
         }
+        // Join, world change and cross-world teleport: start from a live value.
+        refreshBypass(player, System.currentTimeMillis());
         startWorker(player);
         if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
             dropState(player);
@@ -179,6 +268,7 @@ final class VeilEngine {
         if (stopped) {
             return;
         }
+        refreshBypass(player, System.currentTimeMillis());
         startWorker(player);
         if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
             dropState(player);
@@ -189,12 +279,39 @@ final class VeilEngine {
         revealHiddenEntities(player, state);
         state.clearQueuedUpdates();
         state.clearHiddenEntities();
+        // A new position: do not let the old scan's throttle skip this one.
+        state.requestViewScan();
         refreshPlayer(player);
     }
 
+    /**
+     * Same-world teleport. PlayerTeleportEvent fires before the player
+     * moves, so the rescan runs one tick later on the player's own scheduler
+     * (which follows the player to its new region on Folia).
+     */
+    void rescanPlayerAfterTeleport(Player player) {
+        if (stopped) {
+            return;
+        }
+        VeilScheduler.runOnEntityLater(plugin, player, () -> {
+            if (player.isOnline()) {
+                rescanPlayer(player);
+            }
+        }, 1L);
+    }
+
+    /**
+     * Quit. The state is dropped without revealing hidden entities: the
+     * client is gone, and Paper keeps hideEntity state on the CraftPlayer,
+     * which is discarded with the session (a rejoin gets a fresh one). The
+     * reveal used to cost a showEntity per hidden entity and, on Folia, a
+     * full chunk sweep, all for a player who could not see the result.
+     */
     void removePlayer(Player player) {
         cancelWorker(player.getUniqueId());
-        dropState(player);
+        states.remove(player.getUniqueId());
+        bypassCache.remove(player.getUniqueId());
+        pendingReleases.remove(player.getUniqueId());
     }
 
     /** Drops veil state without stopping the player's worker, which keeps polling for re-adoption. */
@@ -234,7 +351,10 @@ final class VeilEngine {
     }
 
     boolean shouldHideChunk(Player player, int chunkX, int chunkZ) {
-        if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
+        // A world whose concealed band is empty has nothing to hide; treating
+        // its chunks as hidden would make every rewrite "fail" and quarantine.
+        if (!settings.isEnabledWorld(player.getWorld()) || !settings.hasConcealedBand(player.getWorld())
+                || isBypassed(player)) {
             return false;
         }
 
@@ -242,10 +362,13 @@ final class VeilEngine {
     }
 
     boolean shouldHideBlock(Player player, int blockX, int blockY, int blockZ) {
-        if (!settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
+        // Cheapest first: most block changes are above the cutoff. The bypass
+        // check happens once, inside shouldHideChunk.
+        World world = player.getWorld();
+        if (!settings.isEnabledWorld(world)) {
             return false;
         }
-        if (blockY < settings.minY(player.getWorld()) || blockY >= settings.hideBelowY(player.getWorld())) {
+        if (blockY < settings.hideMinY(world) || blockY >= settings.hideBelowY(world)) {
             return false;
         }
 
@@ -264,9 +387,6 @@ final class VeilEngine {
         if (location == null || location.getWorld() == null || !settings.hideEntities(location.getWorld())) {
             return false;
         }
-        if (isBypassed(viewer)) {
-            return false;
-        }
         if (!settings.isEnabledWorld(viewer.getWorld()) || !viewer.getWorld().equals(location.getWorld())) {
             return false;
         }
@@ -275,10 +395,11 @@ final class VeilEngine {
         }
 
         int blockY = location.getBlockY();
-        if (blockY < settings.minY(location.getWorld()) || blockY >= settings.hideBelowY(location.getWorld())) {
+        if (blockY < settings.hideMinY(location.getWorld()) || blockY >= settings.hideBelowY(location.getWorld())) {
             return false;
         }
 
+        // Bypass is checked inside shouldHideChunk, after the cheap tests.
         return shouldHideChunk(viewer, location.getBlockX() >> 4, location.getBlockZ() >> 4);
     }
 
@@ -297,28 +418,96 @@ final class VeilEngine {
         }
 
         PlayerVeilState state = stateFor(viewer);
-        if (state.isEntityHidden(entity.getEntityId())) {
+        // Already hidden through this very object: nothing to do. The same
+        // UUID with another object (chunk reloaded, portal copy, new entity
+        // id) is hidden again, otherwise the new id would never be marked.
+        if (state.isEntityHiddenByApi(entity.getUniqueId()) && state.apiHiddenEntity(entity.getUniqueId()) == entity) {
             return;
         }
 
-        state.markEntityHidden(entity.getEntityId(), entity.getUniqueId());
         if (VeilScheduler.canAccessEntity(entity)) {
+            cancelPendingRelease(viewer.getUniqueId(), entity.getUniqueId());
+            // Mark before hiding: hideEntity synchronously sends a destroy
+            // packet, and the destroy handler must already see this entity as
+            // API-hidden so it keeps tracking it instead of forgetting it.
+            state.markEntityHiddenByApi(entity);
             viewer.hideEntity(plugin, entity);
+        } else {
+            // Unowned entity (Folia only): packet cancellation alone keeps it
+            // concealed; its ids are marked hidden, so spawn and follow-up
+            // packets for it are dropped until it can be re-validated.
+            state.markEntityHidden(entity.getEntityId(), entity.getUniqueId());
         }
-        // When the entity is unowned (Folia only), packet cancellation alone
-        // keeps it concealed: its ids are marked hidden, so spawn and
-        // follow-up packets for it are dropped until it can be re-validated.
+    }
+
+    /**
+     * Marks an entity hidden synchronously from the packet thread at the moment
+     * its spawn packet is cancelled. Spawn packets are followed immediately
+     * (same flush or bundle) by metadata, equipment, and similar packets;
+     * deferring this mark to the next tick let those follow-ups through and
+     * leaked names, held items, item-frame contents, and armor. The caller has
+     * already decided the entity must be hidden in this world. Only the
+     * concurrent hidden-entity sets are touched here; the per-player worker and
+     * any API hide are handled by the regular next-tick bounce.
+     */
+    void markEntityHiddenFromPacket(UUID viewerId, int entityId, UUID entityUuid) {
+        if (stopped || entityId < 0) {
+            return;
+        }
+        PlayerVeilState state = states.get(viewerId);
+        if (state == null) {
+            // A spawn sent after quit must not re-create state that quit
+            // removed (it would never be cleaned up). The packet itself is
+            // cancelled by the caller either way.
+            if (!playerWorkers.containsKey(viewerId) && !isOnline(viewerId)) {
+                return;
+            }
+            state = states.computeIfAbsent(viewerId, ignored -> new PlayerVeilState());
+        }
+        state.markEntityHidden(entityId, entityUuid);
+    }
+
+    private static boolean isOnline(UUID playerId) {
+        org.bukkit.Server server = Bukkit.getServer();
+        // No server only in unit tests.
+        return server == null || server.getPlayer(playerId) != null;
     }
 
     boolean isEntityHidden(Player viewer, int entityId) {
-        PlayerVeilState state = states.get(viewer.getUniqueId());
+        return isEntityHidden(viewer.getUniqueId(), entityId);
+    }
+
+    /**
+     * Fast-path check for entity follow-up packets (movement, metadata,
+     * equipment, destroy...): with nothing hidden for this viewer none of them
+     * can need cancelling, so the packet does not have to be read at all.
+     * Safe because a cancelled spawn marks its entity hidden synchronously.
+     */
+    boolean hasHiddenEntities(Player viewer) {
+        return hasHiddenEntities(viewer.getUniqueId());
+    }
+
+    boolean hasHiddenEntities(UUID viewerId) {
+        PlayerVeilState state = states.get(viewerId);
+        return state != null && state.hiddenEntityCount() > 0;
+    }
+
+    /** Whether entity spawns can be hidden for this viewer's current world at all. */
+    boolean entityHidingActive(Player viewer) {
+        World world = viewer.getWorld();
+        return settings.isEnabledWorld(world) && settings.hideEntities(world) && settings.hasConcealedBand(world);
+    }
+
+    boolean isEntityHidden(UUID viewerId, int entityId) {
+        PlayerVeilState state = states.get(viewerId);
         return state != null && state.isEntityHidden(entityId);
     }
 
-    void forgetEntity(Player viewer, int entityId) {
+    /** Called after the client was told to destroy an entity we track as hidden. */
+    void forgetEntityDestroyedForClient(Player viewer, int entityId) {
         PlayerVeilState state = states.get(viewer.getUniqueId());
         if (state != null) {
-            state.forgetEntity(entityId);
+            state.forgetEntityDestroyedForClient(entityId);
         }
     }
 
@@ -326,24 +515,69 @@ final class VeilEngine {
         if (stopped) {
             return;
         }
-        if (!states.containsKey(player.getUniqueId())
-                && settings.isEnabledWorld(player.getWorld())
-                && !isBypassed(player)) {
+        // The worker runs on the player's own thread (main on Paper, owning
+        // region on Folia): the right place for the periodic live check.
+        refreshBypassIfStale(player, System.currentTimeMillis());
+        // Before the early outs: a bypassed player or one in a disabled world
+        // can still have Folia API hides left to undo.
+        processPendingReleases(player);
+        // Cheap early outs, without timing samples: players in disabled worlds,
+        // in worlds with nothing to conceal, and bypassed players have nothing
+        // to do here.
+        if (!settings.isEnabledWorld(player.getWorld()) || !settings.hasConcealedBand(player.getWorld())) {
+            return;
+        }
+        if (isBypassed(player)) {
+            // Bypass granted since the last tick: reveal and drop.
+            if (states.containsKey(player.getUniqueId())) {
+                dropState(player);
+            }
+            return;
+        }
+        if (!states.containsKey(player.getUniqueId())) {
             refreshPlayer(player);
         }
+        PlayerVeilState state = states.get(player.getUniqueId());
+        if (state == null) {
+            return;
+        }
+        metrics.countTrackedWorkerTick();
 
-        long startNanos = System.nanoTime();
-        try {
-            processQueuedChunks(player);
-        } finally {
-            metrics.recordQueueProcessingNanos(System.nanoTime() - startNanos);
+        // The view scan is driven here, not by movement events: riding a
+        // vehicle fires no PlayerMoveEvent, and a player standing still while
+        // mining into a cave needs the periodic force refresh. The scan is
+        // rate limited and skipped when barely moved or turned. It runs
+        // before the queue so its reveals go out this same tick.
+        refreshVisibleChunks(player);
+
+        // Only ticks that have queued work are timed, so the queue metric
+        // averages real work instead of being diluted by empty ticks.
+        if (state.queuedChunkCount() > 0) {
+            long startNanos = System.nanoTime();
+            try {
+                processQueuedChunks(player);
+            } finally {
+                metrics.recordQueueProcessingNanos(System.nanoTime() - startNanos);
+            }
+        }
+
+        // Entities move independently of the viewer: a mob climbing out of a
+        // hidden cave, or one inside a chunk that was just revealed, must be
+        // re-evaluated even while the viewer stands still.
+        if (settings.hideEntities(player.getWorld())) {
+            // Hidden entities need timely reveals; with none hidden, only new
+            // hides are pending, which spawn-packet cancelling already covers
+            // for entities entering tracking range, so scan less often.
+            long interval = state.hiddenEntityCount() > 0
+                    ? settings.entityScanIntervalMillis()
+                    : settings.entityScanIntervalMillis() * IDLE_ENTITY_SCAN_MULTIPLIER;
+            if (state.shouldRefreshEntityScan(interval, System.currentTimeMillis())) {
+                runEntityScan(player, state);
+            }
         }
     }
 
     private void processQueuedChunks(Player player) {
-        int processedRegularChunks = 0;
-        int processedPriorityChunks = 0;
-
         PlayerVeilState state = states.get(player.getUniqueId());
         if (state == null) {
             return;
@@ -355,6 +589,22 @@ final class VeilEngine {
             dropState(player);
             return;
         }
+
+        List<VeilChunkUpdate> deferred = new ArrayList<>(0);
+        try {
+            drainQueuedChunks(player, state, deferred);
+        } finally {
+            // Re-added only now, so this tick's loop cannot meet them again.
+            for (VeilChunkUpdate update : deferred) {
+                state.requeueDeferred(update);
+            }
+        }
+    }
+
+    /** Processes queued updates, collecting those whose chunk is owned by another region into {@code deferred}. */
+    private void drainQueuedChunks(Player player, PlayerVeilState state, List<VeilChunkUpdate> deferred) {
+        int processedRegularChunks = 0;
+        int processedPriorityChunks = 0;
 
         while (processedRegularChunks < settings.maxRegularChunkUpdatesPerPlayerPerTick()
                 || processedPriorityChunks < settings.maxPriorityChunkUpdatesPerPlayerPerTick()) {
@@ -377,6 +627,12 @@ final class VeilEngine {
             if (!chunkKey.worldName().equals(player.getWorld().getName())) {
                 continue;
             }
+            if (update.mode() != VeilMode.REVEAL) {
+                // Hiding is recorded without sending a mask; nothing queues
+                // HIDE anymore, but stay correct and free if anything does.
+                state.markChunkHiddenWithoutSending(chunkKey);
+                continue;
+            }
 
             World world = Bukkit.getWorld(chunkKey.worldName());
             if (world == null || !world.isChunkLoaded(chunkKey.x(), chunkKey.z())) {
@@ -384,14 +640,15 @@ final class VeilEngine {
             }
             if (!VeilScheduler.canAccessChunk(world, chunkKey.x(), chunkKey.z())) {
                 // Loaded but owned by a neighboring region (Folia): unlike an
-                // unloaded chunk, nothing re-sends it later, so re-queue and
-                // retry next tick instead of dropping the update.
-                if (update.priority()) {
-                    state.enqueuePriority(chunkKey, update.mode());
-                } else {
-                    state.enqueue(chunkKey, update.mode());
+                // unloaded chunk, nothing re-sends it later, so it must be
+                // retried, but without blocking the updates behind it. It
+                // goes back at the end of the queue after this tick; the skip
+                // budget bounds the ownership checks when many are unowned.
+                deferred.add(update);
+                if (deferred.size() >= MAX_DEFERRED_CHUNK_UPDATES_PER_TICK) {
+                    break;
                 }
-                break;
+                continue;
             }
 
             Chunk chunk = world.getChunkAt(chunkKey.x(), chunkKey.z());
@@ -399,9 +656,12 @@ final class VeilEngine {
                 continue;
             }
 
-            if (sendChunkMode(player, chunk, update.mode())) {
-                state.markApplied(chunkKey, update.mode());
+            if (revealChunk(player, chunk)) {
+                state.markApplied(chunkKey, VeilMode.REVEAL);
                 metrics.countChunkUpdatePacketSent();
+                // Entities hidden inside a just-revealed chunk should appear
+                // with it, not on the next interval.
+                state.requestEntityScan();
             }
             if (update.priority()) {
                 processedPriorityChunks++;
@@ -412,9 +672,33 @@ final class VeilEngine {
     }
 
     private int effectiveScanRadius(Player player) {
-        int serverViewDistance = plugin.getServer().getViewDistance();
-        int clientViewDistance = player.getClientViewDistance();
-        return Math.min(serverViewDistance, clientViewDistance);
+        int sendViewDistance;
+        try {
+            sendViewDistance = player.getSendViewDistance();
+        } catch (UnsupportedOperationException ignored) {
+            // Some server forks do not implement per-player send distance;
+            // the view distance is the next best measure.
+            sendViewDistance = -1;
+        }
+        return effectiveScanRadius(sendViewDistance, player.getViewDistance(), player.getClientViewDistance());
+    }
+
+    /**
+     * Radius, in chunks, of the area the client actually holds: the player's
+     * own send distance (per-world/per-player on Paper, falling back to the
+     * view distance when unset), never beyond what the client renders. The
+     * old global server view distance was wrong whenever a world or player
+     * used a different distance: chunks the client had stayed outside the
+     * scan, so they were never revealed or kept churning between reveal and
+     * forget.
+     */
+    static int effectiveScanRadius(int sendViewDistance, int viewDistance, int clientViewDistance) {
+        int serverRadius = sendViewDistance > 0 ? sendViewDistance : viewDistance;
+        if (serverRadius <= 0) {
+            serverRadius = clientViewDistance;
+        }
+        int radius = clientViewDistance > 0 ? Math.min(serverRadius, clientViewDistance) : serverRadius;
+        return Math.max(2, radius);
     }
 
     int trackedPlayerCount() {
@@ -437,7 +721,8 @@ final class VeilEngine {
                 player.getLocation().getBlockZ() >> 4
         );
         boolean enabledWorld = settings.isEnabledWorld(player.getWorld());
-        boolean bypassed = isBypassed(player);
+        // Live, not cached: inspect is a rare command and should show the truth.
+        boolean bypassed = player.hasPermission(BYPASS_PERMISSION);
         boolean visible = state != null && state.isChunkVisible(currentChunk);
         String currentChunkState;
         if (!enabledWorld) {
@@ -486,8 +771,53 @@ final class VeilEngine {
         }
     }
 
-    private boolean isBypassed(Player player) {
-        return player.hasPermission("chunkveil.bypass");
+    /**
+     * Cached bypass permission. The packet path asks this per chunk packet and
+     * per block of every multi-block change, on netty/region threads; a live
+     * permission lookup each time added up to millions of lookups. The value
+     * is refreshed on join, teleport and world change and by the player's own
+     * worker about once a second, so a granted or revoked bypass applies
+     * within ~1 s. A player without an entry yet (packets sent before the
+     * join event) is checked live once and cached.
+     */
+    boolean isBypassed(Player player) {
+        BypassEntry cached = bypassCache.get(player.getUniqueId());
+        if (cached != null) {
+            return cached.bypassed();
+        }
+        boolean bypassed = player.hasPermission(BYPASS_PERMISSION);
+        // A late packet after quit must not re-create the entry quit removed.
+        if (player.isOnline()) {
+            BypassEntry entry = new BypassEntry(bypassed, System.currentTimeMillis());
+            bypassCache.put(player.getUniqueId(), entry);
+            // Quit may have removed the entry between the check and the put.
+            if (!player.isOnline()) {
+                bypassCache.remove(player.getUniqueId(), entry);
+            }
+        }
+        return bypassed;
+    }
+
+    private boolean refreshBypass(Player player, long nowMillis) {
+        boolean bypassed = player.hasPermission(BYPASS_PERMISSION);
+        bypassCache.put(player.getUniqueId(), new BypassEntry(bypassed, nowMillis));
+        return bypassed;
+    }
+
+    /** Worker-side refresh: re-checks the permission at most once per {@link #BYPASS_REFRESH_MILLIS}. */
+    private void refreshBypassIfStale(Player player, long nowMillis) {
+        BypassEntry entry = bypassCache.get(player.getUniqueId());
+        if (entry == null || bypassEntryStale(entry.checkedAtMillis(), nowMillis)) {
+            refreshBypass(player, nowMillis);
+        }
+    }
+
+    static boolean bypassEntryStale(long checkedAtMillis, long nowMillis) {
+        // A clock step backwards also counts as stale.
+        return nowMillis - checkedAtMillis >= BYPASS_REFRESH_MILLIS || nowMillis < checkedAtMillis;
+    }
+
+    private record BypassEntry(boolean bypassed, long checkedAtMillis) {
     }
 
     private void refreshEntityVisibility(Player viewer) {
@@ -499,36 +829,60 @@ final class VeilEngine {
         if (!state.shouldRefreshEntityScan(settings)) {
             return;
         }
+        runEntityScan(viewer, state);
+    }
+
+    /** One entity visibility pass for the viewer; the caller has already claimed the scan slot. */
+    private void runEntityScan(Player viewer, PlayerVeilState state) {
+        World world = viewer.getWorld();
+        if (!settings.isEnabledWorld(world)) {
+            return;
+        }
         long startNanos = System.nanoTime();
         try {
-            List<Entity> candidates = collectEntityCandidates(viewer, entityScanBlocks(viewer));
-            candidates.sort(Comparator.comparing(Entity::getUniqueId));
-            FairScanWindow.Selection<Entity> selection = FairScanWindow.select(
-                    candidates, state.entityScanCursor(), settings.entityScanMaxEntitiesPerPlayer());
-            state.entityScanCursor(selection.nextCursor());
-            metrics.recordEntityScanCandidates(selection.items().size(), selection.deferred());
-            state.recordEntityValidationCandidates(
-                    candidates.stream().map(Entity::getUniqueId).toList(),
-                    selection.items().stream().map(Entity::getUniqueId).toList());
-            for (Entity entity : selection.items()) {
-                if (shouldHideEntity(viewer, entity)) {
+            boolean fullHeight = FULL_HEIGHT_ENTITY_SCANS || (VeilScheduler.folia()
+                    && state.nextEntityScanNumber() % FULL_HEIGHT_ENTITY_SCAN_EVERY == 0);
+            List<Entity> candidates = collectEntityCandidates(viewer, entityScanBlocks(viewer), fullHeight);
+            int limit = settings.entityScanMaxEntitiesPerPlayer();
+            List<Entity> selected;
+            int deferred;
+            if (candidates.size() <= limit) {
+                // Everything fits: no ordering needed, no rotating window.
+                selected = candidates;
+                deferred = 0;
+                state.entityScanCursor(0);
+            } else {
+                // A stable order lets the rotating window reach every entity.
+                candidates.sort(Comparator.comparing(Entity::getUniqueId));
+                FairScanWindow.Selection<Entity> selection = FairScanWindow.select(candidates, state.entityScanCursor(), limit);
+                state.entityScanCursor(selection.nextCursor());
+                selected = selection.items();
+                deferred = selection.deferred();
+            }
+            metrics.recordEntityScanCandidates(selected.size(), deferred);
+            state.recordEntityValidation(candidates, selected, deferred == 0, System.currentTimeMillis());
+
+            Location scratch = new Location(world, 0, 0, 0);
+            for (Entity entity : selected) {
+                if (shouldHideEntityForScan(viewer, entity, scratch)) {
                     markEntityHidden(viewer, entity);
-                } else {
-                    if (state.isEntityHidden(entity.getEntityId())) {
-                        state.forgetEntity(entity.getEntityId());
-                        viewer.showEntity(plugin, entity);
-                    }
+                } else if (state.isEntityHidden(entity.getEntityId())) {
+                    revealEntity(viewer, state, entity);
                 }
             }
 
+            if (state.hiddenEntityUuids().isEmpty()) {
+                return;
+            }
             // Only the entity lookup differs per platform: Paper may resolve
             // any UUID globally (and forgets vanished entities), while Folia
-            // sees only entities observed in owned chunks this scan and keeps
-            // everything else hidden (fail-closed) until it is reachable. The
-            // reveal decision itself is shared so the platforms cannot drift.
+            // sees only entities observed in owned chunks this scan (plus
+            // API-hidden ones through their stored object when owned) and
+            // keeps everything else hidden (fail-closed) until it is
+            // reachable. The reveal decision itself is shared.
             Map<UUID, Entity> candidatesByUuid = null;
             if (VeilScheduler.folia()) {
-                candidatesByUuid = new HashMap<>(candidates.size());
+                candidatesByUuid = new HashMap<>(candidates.size() * 2);
                 for (Entity entity : candidates) {
                     candidatesByUuid.put(entity.getUniqueId(), entity);
                 }
@@ -538,18 +892,31 @@ final class VeilEngine {
                 if (candidatesByUuid == null) {
                     entity = Bukkit.getEntity(uuid);
                     if (entity == null) {
-                        state.forgetEntity(uuid);
+                        // Died or its chunk unloaded.
+                        releaseRemovedEntity(viewer, state, uuid);
                         continue;
                     }
                 } else {
                     entity = candidatesByUuid.get(uuid);
                     if (entity == null) {
-                        continue;
+                        Entity hiddenWith = state.apiHiddenEntity(uuid);
+                        if (hiddenWith != null && !hiddenWith.isValid()) {
+                            // Died, unloaded or changed dimension.
+                            releaseRemovedEntity(viewer, state, uuid);
+                            continue;
+                        }
+                        if (hiddenWith != null && VeilScheduler.canAccessEntity(hiddenWith)) {
+                            // Outside this scan's box (for example it climbed
+                            // out of the band) but owned here: decide with it.
+                            entity = hiddenWith;
+                        } else {
+                            // May just be in another region: stays hidden.
+                            continue;
+                        }
                     }
                 }
-                if (!entity.getWorld().equals(viewer.getWorld()) || !shouldHideEntity(viewer, entity)) {
-                    state.forgetEntity(entity.getEntityId());
-                    viewer.showEntity(plugin, entity);
+                if (!entity.getWorld().equals(world) || !shouldHideEntityForScan(viewer, entity, scratch)) {
+                    revealEntity(viewer, state, entity);
                 }
             }
         } finally {
@@ -557,32 +924,82 @@ final class VeilEngine {
         }
     }
 
-    private List<Entity> collectEntityCandidates(Player viewer, int scanBlocks) {
+    /** {@link #shouldHideEntity} for scan loops: reads the location into a reused object. */
+    private boolean shouldHideEntityForScan(Player viewer, Entity entity, Location scratch) {
+        if (entity == viewer) {
+            return false;
+        }
+        return shouldHideEntityAt(viewer, entity.getType(), entity.getLocation(scratch));
+    }
+
+    /**
+     * Makes a hidden entity visible to the viewer again. Must run on the
+     * entity's owning thread (always the case on Paper's main thread).
+     *
+     * API-hidden entities only need showEntity. Packet-only hidden entities
+     * (spawn packet cancelled, never hidden through the API) are different:
+     * the server still believes the client tracks them, and showEntity is a
+     * no-op for an entity Paper never hid, so the spawn packet would never be
+     * resent. hideEntity followed by showEntity forces the tracker to re-pair
+     * and send a fresh spawn. The entity is forgotten first so the resent
+     * spawn and its follow-up packets are not cancelled again.
+     */
+    private void revealEntity(Player viewer, PlayerVeilState state, Entity entity) {
+        if (!state.forgetEntityForReveal(entity.getEntityId(), entity.getUniqueId())) {
+            viewer.hideEntity(plugin, entity);
+        }
+        viewer.showEntity(plugin, entity);
+    }
+
+    /**
+     * Entities within {@code scanBlocks} horizontally and, unless
+     * {@code fullHeight}, within the concealed band plus a margin vertically.
+     * Tracking ranges are horizontal, so entities far below the viewer are
+     * still sent to the client; but only entities inside the band can need
+     * hiding, so scanning the whole height mostly walked surface mobs for
+     * nothing.
+     */
+    private List<Entity> collectEntityCandidates(Player viewer, int scanBlocks, boolean fullHeight) {
+        World world = viewer.getWorld();
+        Location center = viewer.getLocation();
+        double minY = world.getMinHeight();
+        double maxY = world.getMaxHeight();
+        if (!fullHeight) {
+            minY = Math.max(minY, settings.hideMinY(world) - ENTITY_BAND_MARGIN_BLOCKS);
+            maxY = Math.min(maxY, settings.hideBelowY(world) + ENTITY_BAND_MARGIN_BLOCKS);
+            if (maxY <= minY) {
+                return new ArrayList<>();
+            }
+        }
         if (!VeilScheduler.folia()) {
-            return new ArrayList<>(viewer.getWorld().getNearbyEntities(
-                    viewer.getLocation(), scanBlocks, scanBlocks, scanBlocks));
+            java.util.Collection<Entity> nearby = world.getNearbyEntities(new BoundingBox(
+                    center.getX() - scanBlocks, minY, center.getZ() - scanBlocks,
+                    center.getX() + scanBlocks, maxY, center.getZ() + scanBlocks));
+            return nearby instanceof ArrayList<Entity> list ? list : new ArrayList<>(nearby);
         }
 
         // Folia: a wide getNearbyEntities would touch unowned regions.
         // Collect from owned, loaded chunks in the same radius instead;
         // entities in unowned chunks stay hidden until their chunk is owned.
-        World world = viewer.getWorld();
-        Location center = viewer.getLocation();
         int minChunkX = (center.getBlockX() - scanBlocks) >> 4;
         int maxChunkX = (center.getBlockX() + scanBlocks) >> 4;
         int minChunkZ = (center.getBlockZ() - scanBlocks) >> 4;
         int maxChunkZ = (center.getBlockZ() + scanBlocks) >> 4;
-        double minY = center.getY() - scanBlocks;
-        double maxY = center.getY() + scanBlocks;
         List<Entity> candidates = new ArrayList<>();
+        Location scratch = new Location(world, 0, 0, 0);
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
                 if (!world.isChunkLoaded(chunkX, chunkZ)
                         || !VeilScheduler.canAccessChunk(world, chunkX, chunkZ)) {
                     continue;
                 }
-                for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
-                    double y = entity.getLocation().getY();
+                Entity[] entities = world.getChunkAt(chunkX, chunkZ).getEntities();
+                if (fullHeight) {
+                    candidates.addAll(Arrays.asList(entities));
+                    continue;
+                }
+                for (Entity entity : entities) {
+                    double y = entity.getLocation(scratch).getY();
                     if (y >= minY && y <= maxY) {
                         candidates.add(entity);
                     }
@@ -590,6 +1007,55 @@ final class VeilEngine {
             }
         }
         return candidates;
+    }
+
+    /**
+     * Forgets a hidden entity that no longer exists in the world. For an
+     * API-hidden one, Paper's own hidden mark (keyed by UUID, kept until
+     * showEntity) is cleared first through the stored entity object; for a
+     * removed entity that only clears the mark and sends nothing. Without
+     * this, a mob whose chunk unloaded stayed invisible to the viewer after
+     * the chunk loaded again, until they rejoined.
+     */
+    /** Worker side (viewer's thread): undo parked Folia API hides that are now safe to undo. */
+    private void processPendingReleases(Player viewer) {
+        Map<UUID, Entity> pending = pendingReleases.get(viewer.getUniqueId());
+        if (pending == null) {
+            return;
+        }
+        pending.entrySet().removeIf(entry -> {
+            Entity entity = entry.getValue();
+            if (!entity.isValid()) {
+                // Gone: showEntity only clears the mark, nothing is sent.
+                viewer.showEntity(plugin, entity);
+                return true;
+            }
+            if (VeilScheduler.canAccessEntity(entity)) {
+                // Now in this viewer's region: a normal show (Paper re-tracks
+                // it; a spawn below the cutoff is cancelled again as usual).
+                viewer.showEntity(plugin, entity);
+                return true;
+            }
+            return false;
+        });
+        if (pending.isEmpty()) {
+            pendingReleases.remove(viewer.getUniqueId(), pending);
+        }
+    }
+
+    private void cancelPendingRelease(UUID viewerId, UUID entityId) {
+        Map<UUID, Entity> pending = pendingReleases.get(viewerId);
+        if (pending != null) {
+            pending.remove(entityId);
+        }
+    }
+
+    private void releaseRemovedEntity(Player viewer, PlayerVeilState state, UUID uuid) {
+        Entity hiddenWith = state.apiHiddenEntity(uuid);
+        state.forgetEntity(uuid);
+        if (hiddenWith != null && !hiddenWith.isValid()) {
+            viewer.showEntity(plugin, hiddenWith);
+        }
     }
 
     private void revealHiddenEntities(Player viewer, PlayerVeilState state) {
@@ -602,47 +1068,56 @@ final class VeilEngine {
             for (UUID uuid : state.hiddenEntityUuids().toArray(UUID[]::new)) {
                 Entity entity = Bukkit.getEntity(uuid);
                 if (entity != null) {
-                    viewer.showEntity(plugin, entity);
-                    state.forgetEntity(entity.getEntityId());
+                    revealEntity(viewer, state, entity);
+                } else {
+                    releaseRemovedEntity(viewer, state, uuid);
                 }
             }
             return;
         }
 
-        // Folia: reveal what is reachable through owned chunks. An entity
-        // hidden in a now-unowned region stays hidden for this viewer until
-        // it is re-tracked or the viewer rejoins; packet-cancelled entities
-        // re-track naturally once their ids are no longer marked hidden.
-        for (Entity entity : collectEntityCandidates(viewer, entityScanBlocks(viewer))) {
+        // Folia: reveal what is reachable through owned chunks (candidates
+        // are owned, so revealEntity is safe). An entity hidden in a
+        // now-unowned region stays hidden for this viewer until it is
+        // re-tracked or the viewer rejoins.
+        // The full view radius, not the tracking range: this is the last
+        // chance to reach API-hidden entities that wandered farther away.
+        for (Entity entity : collectEntityCandidates(viewer, viewScanBlocks(viewer), true)) {
             if (state.isEntityHidden(entity.getEntityId())) {
-                viewer.showEntity(plugin, entity);
+                revealEntity(viewer, state, entity);
+            }
+        }
+        // API hides not reached above: undo now if the entity is gone,
+        // otherwise park them for the worker. Dropping them would leave
+        // Paper's mark in place: invisible to this viewer until rejoin.
+        for (UUID uuid : state.hiddenEntityUuids().toArray(UUID[]::new)) {
+            Entity hiddenWith = state.apiHiddenEntity(uuid);
+            if (hiddenWith == null) {
+                continue;
+            }
+            if (!hiddenWith.isValid()) {
+                releaseRemovedEntity(viewer, state, uuid);
+            } else {
+                pendingReleases.computeIfAbsent(viewer.getUniqueId(), ignored -> new ConcurrentHashMap<>())
+                        .put(uuid, hiddenWith);
             }
         }
         state.clearHiddenEntities();
     }
 
-    /** Entity scan radius in blocks; the +2 chunk margin keeps hide and reveal sweeps congruent. */
-    private int entityScanBlocks(Player viewer) {
+    /** View-distance radius in blocks; the +2 chunk margin keeps hide and reveal sweeps congruent. */
+    private int viewScanBlocks(Player viewer) {
         return (effectiveScanRadius(viewer) + 2) * 16;
     }
 
-    private int refreshSentChunks(Player player) {
-        int refreshedChunks = 0;
-        for (Chunk chunk : player.getSentChunks()) {
-            World world = chunk.getWorld();
-            if (!settings.isEnabledWorld(world)) {
-                continue;
-            }
-            if (!world.isChunkLoaded(chunk.getX(), chunk.getZ())
-                    || !VeilScheduler.canAccessChunk(world, chunk.getX(), chunk.getZ())
-                    || !player.isChunkSent(chunk)) {
-                continue;
-            }
-            if (world.refreshChunk(chunk.getX(), chunk.getZ())) {
-                refreshedChunks++;
-            }
-        }
-        return refreshedChunks;
+    /**
+     * Horizontal entity scan radius: the view radius capped at the farthest
+     * entity tracking range (+ margin). Entities beyond it are not sent to
+     * the client at all; when one comes into range its spawn packet goes
+     * through the spawn handler, and a hidden one is found by the next scan.
+     */
+    private int entityScanBlocks(Player viewer) {
+        return trackingRange.scanBlocks(viewer.getWorld(), viewScanBlocks(viewer));
     }
 
     private VeilMode modeFor(Player player, int chunkX, int chunkZ) {
@@ -652,11 +1127,16 @@ final class VeilEngine {
     }
 
     void refreshVisibleChunks(Player player) {
-        if (stopped || !settings.isEnabledWorld(player.getWorld())) {
+        if (stopped || !settings.isEnabledWorld(player.getWorld()) || isBypassed(player)) {
             return;
         }
 
         PlayerVeilState state = stateFor(player);
+        // Runs every worker tick: skip the location lookup inside the
+        // minimum interval.
+        if (!state.viewRevealIntervalElapsed(System.currentTimeMillis(), settings.viewRevealRefreshMillis())) {
+            return;
+        }
         Location eye = player.getEyeLocation();
         if (!state.shouldRefreshViewReveal(locationSnapshot(eye), settings)) {
             return;
@@ -664,10 +1144,11 @@ final class VeilEngine {
 
         long startNanos = System.nanoTime();
         try {
-            Set<ChunkKey> forgottenChunks = state.forgetVisibleChunksOutside(player.getWorld().getName(), player.getLocation().getChunk().getX(), player.getLocation().getChunk().getZ(), effectiveScanRadius(player));
-            state.rememberVisibleChunks(collectVisibleChunks(player, eye, state.visibleChunkSnapshot()));
-            Set<ChunkKey> visibleChunks = state.visibleChunkSnapshot();
-            enqueueVisibilityDelta(player, state, visibleChunks, forgottenChunks);
+            Location location = player.getLocation();
+            Set<ChunkKey> forgottenChunks = state.forgetVisibleChunksOutside(player.getWorld().getName(),
+                    location.getBlockX() >> 4, location.getBlockZ() >> 4, effectiveScanRadius(player));
+            state.rememberVisibleChunks(collectVisibleChunks(player, eye, state));
+            enqueueVisibilityDelta(player, state, forgottenChunks);
         } finally {
             metrics.recordRevealScanNanos(System.nanoTime() - startNanos);
         }
@@ -684,107 +1165,74 @@ final class VeilEngine {
         );
     }
 
-    private Set<ChunkKey> collectVisibleChunks(Player player, Location eye, Set<ChunkKey> alreadyVisibleChunks) {
+    private Set<ChunkKey> collectVisibleChunks(Player player, Location eye, PlayerVeilState state) {
         Set<ChunkKey> visibleChunks = new HashSet<>();
+        World world = player.getWorld();
+        String worldName = world.getName();
         int maxDistanceBlocks = effectiveScanRadius(player) * 16;
+        // Resolved once per scan instead of once per block per ray.
+        ViewRay.Bounds bounds = new ViewRay.Bounds(
+                world.getMinHeight(),
+                world.getMaxHeight(),
+                settings.hideMinY(world),
+                settings.hideBelowY(world),
+                settings.viewRevealOcclusionGraceBlocks());
+        // Fast path: block states straight from chunk sections, one chunk
+        // lookup per chunk instead of per voxel (shared by all rays of the
+        // scan). Falls back to the Bukkit path if server internals differ.
+        ViewRay.Terrain fastTerrain = FastTerrain.create(world, plugin.getLogger());
+        ViewRay.Terrain terrain = fastTerrain != null ? fastTerrain : new ViewRay.Terrain() {
+            @Override
+            public boolean canEnterChunk(int chunkX, int chunkZ) {
+                return world.isChunkLoaded(chunkX, chunkZ) && VeilScheduler.canAccessChunk(world, chunkX, chunkZ);
+            }
+
+            @Override
+            public boolean isOccluding(int x, int y, int z) {
+                // Material lookup without allocating a Block object.
+                return world.getType(x, y, z).isOccluding();
+            }
+        };
+        ViewRay.ChunkSink sink = new ViewRay.ChunkSink() {
+            @Override
+            public boolean alreadyVisible(int chunkX, int chunkZ) {
+                // The live concurrent set: no per-scan snapshot copy.
+                return state.isChunkVisible(ChunkKey.of(worldName, chunkX, chunkZ));
+            }
+
+            @Override
+            public void reveal(int chunkX, int chunkZ) {
+                visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
+            }
+        };
+        double originX = eye.getX();
+        double originY = eye.getY();
+        double originZ = eye.getZ();
         for (Vector direction : buildViewRevealDirections(eye.getYaw())) {
-            collectVisibleChunksOnRay(player.getWorld(), eye, direction, maxDistanceBlocks, visibleChunks, alreadyVisibleChunks);
+            ViewRay.walk(originX, originY, originZ, direction.getX(), direction.getY(), direction.getZ(),
+                    maxDistanceBlocks, bounds, terrain, sink);
         }
 
         return visibleChunks;
     }
 
-    private void collectVisibleChunksOnRay(
-            World world,
-            Location eye,
-            Vector direction,
-            int maxDistanceBlocks,
-            Set<ChunkKey> visibleChunks,
-            Set<ChunkKey> alreadyVisibleChunks
-    ) {
-        int previousX = Integer.MIN_VALUE;
-        int previousY = Integer.MIN_VALUE;
-        int previousZ = Integer.MIN_VALUE;
-        int checkedChunkX = Integer.MIN_VALUE;
-        int checkedChunkZ = Integer.MIN_VALUE;
-        int addedChunkX = Integer.MIN_VALUE;
-        int addedChunkZ = Integer.MIN_VALUE;
-        boolean currentChunkAlreadyVisible = false;
-        String worldName = world.getName();
-        boolean reachedHiddenLayer = false;
-        int occludingBlocks = 0;
-        for (double distance = 0.0D; distance <= maxDistanceBlocks; distance += 1.0D) {
-            int blockX = NumberConversions.floor(eye.getX() + direction.getX() * distance);
-            int blockY = NumberConversions.floor(eye.getY() + direction.getY() * distance);
-            int blockZ = NumberConversions.floor(eye.getZ() + direction.getZ() * distance);
-            if (blockX == previousX && blockY == previousY && blockZ == previousZ) {
-                continue;
-            }
-            previousX = blockX;
-            previousY = blockY;
-            previousZ = blockZ;
-
-            if (blockY < world.getMinHeight() || blockY >= world.getMaxHeight()) {
-                break;
-            }
-            int chunkX = blockX >> 4;
-            int chunkZ = blockZ >> 4;
-            if (chunkX != checkedChunkX || chunkZ != checkedChunkZ) {
-                checkedChunkX = chunkX;
-                checkedChunkZ = chunkZ;
-                if (!world.isChunkLoaded(chunkX, chunkZ)
-                        || !VeilScheduler.canAccessChunk(world, chunkX, chunkZ)) {
-                    break;
-                }
-                currentChunkAlreadyVisible = alreadyVisibleChunks.contains(ChunkKey.of(worldName, chunkX, chunkZ));
-            }
-
-            Block block = world.getBlockAt(blockX, blockY, blockZ);
-            if (blockY >= settings.minY(world) && blockY < settings.hideBelowY(world)) {
-                reachedHiddenLayer = true;
-                if (chunkX != addedChunkX || chunkZ != addedChunkZ) {
-                    if (!currentChunkAlreadyVisible) {
-                        visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
-                    }
-                    addedChunkX = chunkX;
-                    addedChunkZ = chunkZ;
-                }
-            } else if (reachedHiddenLayer) {
-                if (chunkX != addedChunkX || chunkZ != addedChunkZ) {
-                    if (!currentChunkAlreadyVisible) {
-                        visibleChunks.add(ChunkKey.of(worldName, chunkX, chunkZ));
-                    }
-                    addedChunkX = chunkX;
-                    addedChunkZ = chunkZ;
-                }
-            }
-
-            if (block.getType().isOccluding()) {
-                occludingBlocks++;
-                if (occludingBlocks > settings.viewRevealOcclusionGraceBlocks()) {
-                    break;
-                }
-            } else {
-                occludingBlocks = 0;
-            }
-        }
-    }
-
-    private void enqueueVisibilityDelta(Player player, PlayerVeilState state, Set<ChunkKey> visibleChunks, Set<ChunkKey> forgottenChunks) {
+    private void enqueueVisibilityDelta(Player player, PlayerVeilState state, Set<ChunkKey> forgottenChunks) {
+        // Chunks that left the view are recorded as hidden without sending a
+        // mask (see PlayerVeilState#markChunkHiddenWithoutSending). This used
+        // to rebuild the whole concealed band block by block on the main
+        // thread, ~13 ms per chunk, for no security gain.
         for (ChunkKey chunkKey : forgottenChunks) {
-            if (!chunkKey.worldName().equals(player.getWorld().getName())) {
-                continue;
-            }
-            if (player.getWorld().isChunkLoaded(chunkKey.x(), chunkKey.z())) {
-                state.enqueuePriority(chunkKey, VeilMode.HIDE);
-            }
+            state.markChunkHiddenWithoutSending(chunkKey);
         }
 
-        for (ChunkKey chunkKey : visibleChunks) {
-            if (!chunkKey.worldName().equals(player.getWorld().getName())) {
-                continue;
-            }
-            if (player.getWorld().isChunkLoaded(chunkKey.x(), chunkKey.z())) {
+        // Only visible chunks the client still holds fake: newly seen ones,
+        // and earlier reveals that did not go through (not loaded or not sent
+        // yet, a failed resend), which are retried this way. Already revealed
+        // chunks cost one map lookup instead of an isChunkLoaded and enqueue.
+        World world = player.getWorld();
+        String worldName = world.getName();
+        for (ChunkKey chunkKey : state.visibleChunksAwaitingReveal(worldName)) {
+            if (world.isChunkLoaded(chunkKey.x(), chunkKey.z())) {
                 state.enqueuePriority(chunkKey, VeilMode.REVEAL);
             }
         }
@@ -848,9 +1296,9 @@ final class VeilEngine {
 
     private double recentTps() {
         if (VeilScheduler.folia()) {
-            // Folia has no single global TPS; treat it as full speed so
-            // adaptive scan quality never degrades from a bogus reading.
-            return 20.0D;
+            // No global TPS on Folia: the scan runs on the player's region
+            // thread, so use that region's TPS (falls back to 20 if unknown).
+            return FoliaRegionTps.currentRegionTps(plugin.getLogger());
         }
         double[] tps = Bukkit.getTPS();
         return tps.length == 0 ? 20.0D : Math.min(20.0D, Math.max(0.0D, tps[0]));
@@ -900,55 +1348,25 @@ final class VeilEngine {
         return -89.0F + 178.0F * index / (total - 1);
     }
 
-    private boolean sendChunkMode(Player player, Chunk chunk, VeilMode mode) {
-        if (mode == VeilMode.REVEAL) {
-            boolean refreshed = chunk.getWorld().refreshChunk(chunk.getX(), chunk.getZ());
-            if (refreshed) {
-                scheduleFollowUpRevealRefresh(player, chunk);
-            }
-            return refreshed;
+    /** Resends a revealed chunk so the client receives its real data. */
+    private boolean revealChunk(Player player, Chunk chunk) {
+        boolean refreshed = resendChunkTo(player, chunk.getWorld(), chunk.getX(), chunk.getZ());
+        if (refreshed) {
+            scheduleFollowUpRevealRefresh(player, chunk);
         }
+        return refreshed;
+    }
 
-        long startNanos = System.nanoTime();
-        int minY = Math.max(chunk.getWorld().getMinHeight(), settings.minY(chunk.getWorld()));
-        int maxY = Math.min(settings.hideBelowY(chunk.getWorld()), chunk.getWorld().getMaxHeight());
-        if (minY >= maxY) {
-            return false;
+    /**
+     * Resends one chunk to one player. The broadcast fallback resends it to
+     * every player tracking it, which is what made reveals scale with the
+     * number of nearby players.
+     */
+    private boolean resendChunkTo(Player player, World world, int chunkX, int chunkZ) {
+        if (PlayerChunkRefresher.refresh(plugin.getLogger(), player, world, chunkX, chunkZ)) {
+            return true;
         }
-
-        Material defaultFakeBlock = settings.defaultFakeBlock(chunk.getWorld());
-        BlockData defaultFakeBlockData = fakeBlockData.computeIfAbsent(defaultFakeBlock, Material::createBlockData);
-        int baseX = chunk.getX() << 4;
-        int baseZ = chunk.getZ() << 4;
-        boolean sent = false;
-
-        for (int sectionMinY = minY; sectionMinY < maxY; sectionMinY += 16) {
-            int sectionMaxY = Math.min(sectionMinY + 16, maxY);
-            Map<Position, BlockData> changes = new HashMap<>(16 * 16 * (sectionMaxY - sectionMinY));
-
-            for (int y = sectionMinY; y < sectionMaxY; y++) {
-                for (int x = 0; x < 16; x++) {
-                    for (int z = 0; z < 16; z++) {
-                        Block block = chunk.getBlock(x, y, z);
-                        Position position = Position.block(baseX + x, y, baseZ + z);
-                        Material replacement = settings.replacementFor(chunk.getWorld(), block.getType());
-                        if (replacement != null) {
-                            BlockData blockData = replacement == defaultFakeBlock
-                                    ? defaultFakeBlockData
-                                    : fakeBlockData.computeIfAbsent(replacement, Material::createBlockData);
-                            changes.put(position, blockData);
-                        }
-                    }
-                }
-            }
-
-            if (!changes.isEmpty()) {
-                player.sendMultiBlockChange(changes);
-                sent = true;
-            }
-        }
-        metrics.recordChunkUpdateMaskNanos(System.nanoTime() - startNanos);
-        return sent;
+        return world.refreshChunk(chunkX, chunkZ);
     }
 
     private void scheduleFollowUpRevealRefresh(Player player, Chunk chunk) {
@@ -978,7 +1396,7 @@ final class VeilEngine {
 
             Chunk refreshedChunk = world.getChunkAt(chunkX, chunkZ);
             if (player.isChunkSent(refreshedChunk)) {
-                world.refreshChunk(chunkX, chunkZ);
+                resendChunkTo(player, world, chunkX, chunkZ);
             }
         }, 2L);
     }

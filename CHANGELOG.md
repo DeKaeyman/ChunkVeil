@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.2.0-beta.1
+
+A huge performance release. The whole plugin was audited for lag and bugs on Paper and Folia, and every hot path was reworked and measured with a new stress test harness (100 fake players on one server). Protection is unchanged: the same blocks, entities and packets stay hidden, fail-closed as before.
+
+### Performance
+
+- **Chunk rewriting is about 9x faster** (452 µs to about 50 µs per chunk) and allocates about 20x less memory. Visible sections and biomes are copied straight through, fully hidden sections are written without decoding, and the output is byte-identical to the old rewriter (checked against it on 1500 random chunks).
+- **Chunk rewrite cache:** when the same chunk is sent to several players (players together at spawn, in towns, reveal resends), it is rewritten once instead of once per player.
+- **Reveal ray scans cost about half** (507 µs to 261 µs per scan in the 100-player test): blocks are read straight from the chunk sections with one chunk lookup per chunk instead of per block, and rays walk voxel by voxel (DDA), which also stops them seeing through diagonal walls.
+- **Entity scans cost about half** (339 µs to 192 µs per scan): they only look at the concealed band instead of the full world height, and only as far as entities are actually sent to players (the tracking range instead of the view distance).
+- **No more chunk re-hide lag spikes.** Chunks leaving a player's view used to be re-masked block by block on the main thread, about 13 ms each. That work is gone.
+- **Reveals go to one player.** A reveal used to resend the chunk to every nearby player, twice; now only the player who needs it gets it.
+- **`/chunkveil reload` no longer resends every chunk to everyone.** Only worlds whose concealment settings changed are resent, per player and spread over ticks. `/chunkveil disable` restores chunks the same way.
+- Entity follow-up packets skip all work when nothing is hidden for a viewer; the bypass permission is cached instead of checked per packet and per block; packet types for disabled features are no longer subscribed; the per-player worker does nothing for players who cannot need it.
+- In the 100-player stress test, ChunkVeil's total cost dropped 31% in the last optimization pass alone, and the server reached 8.1 instead of 6.9 TPS.
+
+### Fixes
+
+- **Entities:** hidden mobs could stay invisible for good, reveals of packet-only hidden entities did nothing, names, items and armor could leak right after a hidden spawn, entities were only re-checked when the viewer crossed a chunk, a mob that came back with a new entity id could no longer be hidden, and hidden mobs whose chunk unloaded stayed invisible until rejoin.
+- **Chunks:** `min-y` was ignored by the chunk rewriter, the light of a section crossing an unaligned `min-y` was sent unchanged, sections with more than 256 block types near the cutoff could be corrupted on the client (direct palette width), and `cave_air`/`void_air` were treated as solid (carved caves filled with fake blocks under `hide-air: false`).
+- **Minecraft 1.21.0 to 1.21.4:** the older chunk format (length-prefixed data arrays) is now supported; Paper 1.21.4 is in the boot-verified matrix.
+- **End:** enabling the End with the default settings quarantined protection; the default band is now `hide-below-y: 48`, `min-y: 0`.
+- **Reveals:** vehicles and standing still now get reveals (the scan no longer needs movement events), teleports scan the new location instead of the old one, and the scan radius follows per-world and per-player view distance.
+- **Folia:** one chunk owned by another region no longer blocks a player's whole reveal queue, a rare unload race could leave a chunk fake for good, the disable/reload resend no longer skips chunks of neighbouring regions, reloads no longer let chunks through unprotected in the moment between the old and the new listener, API-hidden entities in other regions are released safely, dead hidden entities no longer pile up, and adaptive scan quality now uses the player's region TPS.
+- Quitting players no longer trigger an entity reveal; timing "max" values in `/chunkveil status` are now the last 5 minutes instead of all-time.
+
+### New
+
+- `/chunkveil metrics`: raw counters and timings for scripts (every packet path is now timed).
+- Emergency switches: `-Dchunkveil.disableFastTerrain=true`, `-Dchunkveil.disableRewriteCache=true`, `-Dchunkveil.disableEntityBandScan=true` turn the new fast paths off without a new build.
+- `stress/`: a stress test harness for Paper and Folia (fake players, a driver plugin, JFR hotspot analysis, before/after runs). See `stress/README.md`.
+
+### Compatibility
+
+- ProtocolLib dev build of 2026-10-06 pinned for the 1.21.9+ and 26.x boot matrix.
+- Minecraft 26.3 is not supported yet: with the current ProtocolLib dev build, ProtocolLib's light-data wrapper fails to initialise on 26.3, so ChunkVeil refuses to send concealed chunks and quarantines (fail-closed, as designed). It will be enabled once ProtocolLib fixes it.
+- Documented: `hide-players` also removes a hidden player from the viewer's tab list (Paper behaviour), and chunk heightmaps are sent unchanged (see docs/COVERAGE.md).
+- For big servers: the vanilla locator bar (`gamerule locator_bar`) costs a lot with many players; in the stress test it was the largest cost on the whole server.
+
 ## 1.1.0-rc.4
 
 A running server is never taken down by a single bad packet anymore. Motivated by a Canvas 26.2 field report where one malformed chunk packet (out of 2.5 million, produced by one of three simultaneously installed anti-xray plugins) tripped the quarantine and kicked a full server.

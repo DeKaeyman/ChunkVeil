@@ -24,12 +24,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 final class VeilCommand implements TabExecutor {
-    private static final List<String> SUBCOMMANDS = List.of("status", "verify", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version");
+    private static final List<String> SUBCOMMANDS = List.of("status", "verify", "inspect", "report", "predict", "update", "reload", "refresh", "disable", "enable", "debug", "version", "metrics");
 
     private static final Set<String> VERIFIED_MINECRAFT_VERSIONS = ReleaseMetadata.releaseVerifiedMinecraftVersions();
     private static final DateTimeFormatter REPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final long REQUIRED_REVEAL_PREDICT_SAMPLES = 30L;
-    private static final long REQUIRED_CHUNK_MASK_PREDICT_SAMPLES = 5L;
     private static final long REQUIRED_ENTITY_PREDICT_SAMPLES = 10L;
     private static final long REQUIRED_QUEUE_PREDICT_SAMPLES = 100L;
 
@@ -60,12 +59,72 @@ final class VeilCommand implements TabExecutor {
             case "enable", "on" -> enable(sender);
             case "debug" -> debug(sender, args);
             case "version" -> version(sender);
+            case "metrics" -> metricsRaw(sender);
             default -> {
                 sender.sendMessage(lang().message("commands.help.unknown-command"));
                 sendHelp(sender, label);
             }
         }
         return true;
+    }
+
+    /**
+     * Machine-readable cumulative counters and timings (key=value), for
+     * scripts such as the stress test harness polling over RCON. Totals only:
+     * the caller computes rates from the difference between two polls.
+     */
+    private void metricsRaw(CommandSender sender) {
+        if (!canUse(sender, "chunkveil.report")) {
+            deny(sender);
+            return;
+        }
+        VeilMetrics metrics = plugin.metrics();
+        if (metrics == null) {
+            sender.sendMessage("chunkveil_metrics v=1 available=false");
+            return;
+        }
+        VeilEngine engine = plugin.veilEngine();
+        StringBuilder out = new StringBuilder();
+        out.append("chunkveil_metrics v=1 available=true")
+                .append(" timeMillis=").append(System.currentTimeMillis())
+                .append(" runtime=").append(plugin.veilRuntimeEnabled())
+                .append(" rewriteActive=").append(plugin.packetRewriteActive())
+                .append(" trackedPlayers=").append(engine == null ? 0 : engine.trackedPlayerCount())
+                .append(" queuedChunks=").append(engine == null ? 0 : engine.queuedChunkCount())
+                .append('\n');
+        out.append("counters")
+                .append(" chunkPackets=").append(metrics.chunkPackets())
+                .append(" hiddenChunkPackets=").append(metrics.hiddenChunkPackets())
+                .append(" rewrittenChunkPackets=").append(metrics.rewrittenChunkPackets())
+                .append(" blockChangesRewritten=").append(metrics.blockChangesRewritten())
+                .append(" multiBlockChangesRewritten=").append(metrics.multiBlockChangesRewritten())
+                .append(" blockEntityUpdatesCancelled=").append(metrics.blockEntityUpdatesCancelled())
+                .append(" entitySpawnsCancelled=").append(metrics.entitySpawnsCancelled())
+                .append(" entityPacketsCancelled=").append(metrics.entityPacketsCancelled())
+                .append(" lightPacketsSanitized=").append(metrics.lightPacketsSanitized())
+                .append(" chunkUpdatePacketsSent=").append(metrics.chunkUpdatePacketsSent())
+                .append(" securityPacketsCancelled=").append(metrics.securityPacketsCancelled())
+                .append(" entityScanCandidates=").append(metrics.entityScanCandidates())
+                .append(" trackedWorkerTicks=").append(metrics.trackedWorkerTicks())
+                .append(" chunkRewriteCacheHits=").append(plugin.chunkRewriteCacheStats()[0])
+                .append(" chunkRewriteCacheMisses=").append(plugin.chunkRewriteCacheStats()[1])
+                .append('\n');
+        appendRawTiming(out, "reveal_scan", metrics.revealScanSamples(), metrics.revealScanTotalNanos());
+        appendRawTiming(out, "chunk_rewrite", metrics.packetChunkRewriteSamples(), metrics.packetChunkRewriteTotalNanos());
+        appendRawTiming(out, "entity_scan", metrics.entityScanSamples(), metrics.entityScanTotalNanos());
+        appendRawTiming(out, "queue", metrics.queueProcessingSamples(), metrics.queueProcessingTotalNanos());
+        for (PacketSecurityState.ProtectedPath path : PacketSecurityState.ProtectedPath.values()) {
+            appendRawTiming(out, "packet_" + path.name().toLowerCase(Locale.ROOT),
+                    metrics.packetHandlingSamples(path), metrics.packetHandlingTotalNanos(path));
+        }
+        sender.sendMessage(out.toString().trim());
+    }
+
+    private static void appendRawTiming(StringBuilder out, String name, long samples, long totalNanos) {
+        out.append("timing name=").append(name)
+                .append(" samples=").append(samples)
+                .append(" totalNanos=").append(totalNanos)
+                .append('\n');
     }
 
     private void version(CommandSender sender) {
@@ -252,7 +311,6 @@ final class VeilCommand implements TabExecutor {
         sender.sendMessage(lang().message("commands.status.section-timings"));
         sendTiming(sender, "Reveal scan", metrics.revealScanAverageMillis(), metrics.revealScanMaxMillis(), metrics.revealScanSamples());
         sendTiming(sender, "Packet chunk rewrite", metrics.packetChunkRewriteAverageMillis(), metrics.packetChunkRewriteMaxMillis(), metrics.packetChunkRewriteSamples());
-        sendTiming(sender, "Chunk update masking", metrics.chunkUpdateMaskAverageMillis(), metrics.chunkUpdateMaskMaxMillis(), metrics.chunkUpdateMaskSamples());
         sendTiming(sender, "Entity scan", metrics.entityScanAverageMillis(), metrics.entityScanMaxMillis(), metrics.entityScanSamples());
         sendTiming(sender, "Queue processing (per player)", metrics.queueProcessingAverageMillis(), metrics.queueProcessingMaxMillis(), metrics.queueProcessingSamples());
     }
@@ -370,6 +428,16 @@ final class VeilCommand implements TabExecutor {
         verifyLine(sender, infoBadge(), "ChunkVeil " + plugin.getDescription().getVersion()
                 + ", ProtocolLib " + protocolLibVersion(protocolLib)
                 + ", Java " + Runtime.version() + ".");
+        if (plugin.veilRuntimeEnabled()) {
+            if (PlayerChunkRefresher.available()) {
+                verifyLine(sender, okBadge(), "Chunk reveals are sent only to the player who revealed them.");
+            } else {
+                warnings++;
+                verifyLine(sender, warnBadge(), "Chunk reveals fall back to resending to every nearby player"
+                        + " (per-player path unavailable on this server). Protection is unaffected, but reveals"
+                        + " cost more in crowded areas; see the startup log for the reason.");
+            }
+        }
 
         sender.sendMessage(lang().message("commands.verify.section-worlds"));
         if (settings == null) {
@@ -427,9 +495,12 @@ final class VeilCommand implements TabExecutor {
                     PacketSecurityState.ProtectedPath.BLOCK_ENTITY));
             warnings += healthResult == 1 ? 1 : 0;
             failures += healthResult == 2 ? 1 : 0;
-            healthResult = sendHealth(sender, "Entities", plugin.packetHealth(
-                    PacketSecurityState.ProtectedPath.ENTITY_SPAWN,
-                    PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP));
+            // No world hides entities: their packets are not even subscribed.
+            healthResult = sendHealth(sender, "Entities", settings.anyWorldHidesEntities()
+                    ? plugin.packetHealth(
+                            PacketSecurityState.ProtectedPath.ENTITY_SPAWN,
+                            PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP)
+                    : plugin.packetHealth());
             warnings += healthResult == 1 ? 1 : 0;
             failures += healthResult == 2 ? 1 : 0;
 
@@ -718,11 +789,13 @@ final class VeilCommand implements TabExecutor {
                     "badge", infoBadge(),
                     "reveal", metrics.revealScanSamples(),
                     "required_reveal", REQUIRED_REVEAL_PREDICT_SAMPLES,
-                    "chunk_mask", metrics.chunkUpdateMaskSamples(),
-                    "required_chunk_mask", REQUIRED_CHUNK_MASK_PREDICT_SAMPLES,
+                    // Chunk re-hide masks no longer exist; older lang.yml
+                    // files still reference these placeholders.
+                    "chunk_mask", "-",
+                    "required_chunk_mask", "-",
                     "entity", metrics.entityScanSamples(),
                     "required_entity", REQUIRED_ENTITY_PREDICT_SAMPLES,
-                    "queue", metrics.queueProcessingSamples(),
+                    "queue", metrics.trackedWorkerTicks(),
                     "required_queue", REQUIRED_QUEUE_PREDICT_SAMPLES
             )));
             return;
@@ -768,21 +841,18 @@ final class VeilCommand implements TabExecutor {
         double revealMillis = metrics.revealScanAverageMillis();
         double entityMillis = metrics.entityScanAverageMillis();
         double queueMillis = metrics.queueProcessingAverageMillis();
-        double maskMillis = metrics.chunkUpdateMaskAverageMillis();
 
         double revealActivityFactor = 0.18D;
         // Entity scans are interval-driven, not movement-driven. Discounting them
         // made the old estimate systematically optimistic at the target player count.
         double entityActivityFactor = 1.0D;
-        double chunkMaskBurstsPerPlayerPerSecond = 0.12D;
         double revealScansPerSecond = players * (1000.0D / settings.viewRevealRefreshMillis()) * revealActivityFactor;
         double entityScansPerSecond = players * (1000.0D / settings.entityScanIntervalMillis()) * entityActivityFactor;
-        // Queue timing is recorded per player per tick (one worker per player),
-        // so the per-second cost scales with the player count.
+        // Queue timing is sampled only on worker ticks that had queued work;
+        // scale by the share of ticks that did (one worker per player).
         double estimatedMillisPerSecond = revealScansPerSecond * revealMillis
                 + entityScansPerSecond * entityMillis
-                + players * 20.0D * queueMillis
-                + players * chunkMaskBurstsPerPlayerPerSecond * maskMillis;
+                + players * 20.0D * metrics.queueBusyFraction() * queueMillis;
         double tickMillis = estimatedMillisPerSecond / 20.0D * cpuTier.mainThreadMultiplier();
         double loadPercent = tickMillis / 50.0D * 100.0D;
 
@@ -809,9 +879,9 @@ final class VeilCommand implements TabExecutor {
 
     private boolean hasEnoughPredictionSamples(VeilMetrics metrics) {
         return metrics.revealScanSamples() >= REQUIRED_REVEAL_PREDICT_SAMPLES
-                && metrics.chunkUpdateMaskSamples() >= REQUIRED_CHUNK_MASK_PREDICT_SAMPLES
                 && metrics.entityScanSamples() >= REQUIRED_ENTITY_PREDICT_SAMPLES
-                && metrics.queueProcessingSamples() >= REQUIRED_QUEUE_PREDICT_SAMPLES;
+                // Worker ticks, not queue samples: an idle queue is valid evidence.
+                && metrics.trackedWorkerTicks() >= REQUIRED_QUEUE_PREDICT_SAMPLES;
     }
 
     private Integer positiveInteger(String value) {
@@ -1006,21 +1076,18 @@ final class VeilCommand implements TabExecutor {
 
         appendSection(report, "Performance Snapshot");
         appendLine(report, "reveal scan avg ms", decimal(metrics.revealScanAverageMillis()));
-        appendLine(report, "reveal scan max ms", decimal(metrics.revealScanMaxMillis()));
+        appendLine(report, "reveal scan max ms (last 5 min)", decimal(metrics.revealScanMaxMillis()));
         appendLine(report, "reveal scan samples", metrics.revealScanSamples());
         appendLine(report, "packet chunk rewrite avg ms", decimal(metrics.packetChunkRewriteAverageMillis()));
-        appendLine(report, "packet chunk rewrite max ms", decimal(metrics.packetChunkRewriteMaxMillis()));
+        appendLine(report, "packet chunk rewrite max ms (last 5 min)", decimal(metrics.packetChunkRewriteMaxMillis()));
         appendLine(report, "packet chunk rewrite samples", metrics.packetChunkRewriteSamples());
-        appendLine(report, "chunk update mask avg ms", decimal(metrics.chunkUpdateMaskAverageMillis()));
-        appendLine(report, "chunk update mask max ms", decimal(metrics.chunkUpdateMaskMaxMillis()));
-        appendLine(report, "chunk update mask samples", metrics.chunkUpdateMaskSamples());
         appendLine(report, "entity scan avg ms", decimal(metrics.entityScanAverageMillis()));
-        appendLine(report, "entity scan max ms", decimal(metrics.entityScanMaxMillis()));
+        appendLine(report, "entity scan max ms (last 5 min)", decimal(metrics.entityScanMaxMillis()));
         appendLine(report, "entity scan samples", metrics.entityScanSamples());
         appendLine(report, "entity scan candidates inspected", metrics.entityScanCandidates());
         appendLine(report, "entity scan candidates deferred", metrics.entityScanCandidatesDeferred());
         appendLine(report, "queue processing per-player avg ms", decimal(metrics.queueProcessingAverageMillis()));
-        appendLine(report, "queue processing per-player max ms", decimal(metrics.queueProcessingMaxMillis()));
+        appendLine(report, "queue processing per-player max ms (last 5 min)", decimal(metrics.queueProcessingMaxMillis()));
         appendLine(report, "queue processing samples", metrics.queueProcessingSamples());
 
         appendSection(report, "Tracked Runtime State");
@@ -1293,6 +1360,7 @@ final class VeilCommand implements TabExecutor {
             case "update" -> "chunkveil.update";
             case "debug" -> "chunkveil.debug";
             case "version" -> "chunkveil.version";
+            case "metrics" -> "chunkveil.report";
             case "refresh" -> "chunkveil.refresh";
             case "disable", "enable" -> "chunkveil.toggle";
             default -> "chunkveil.admin";

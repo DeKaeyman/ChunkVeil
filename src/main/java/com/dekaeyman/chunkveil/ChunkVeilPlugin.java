@@ -75,16 +75,37 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
     void reloadVeil() {
         boolean restoreDebug = debugEnabled;
-        if (veilEngine != null) {
-            veilEngine.restoreAllPlayersToRealChunks();
-        }
+        // No restore of real chunks here: it resent every sent chunk of every
+        // player through a broadcast refresh (k² packets for shared chunks)
+        // while the old listener was still active, so everything was hidden
+        // again anyway. The new engine adopts what clients already hold and
+        // only worlds whose concealment changed are resent, per player.
+        java.util.Map<String, VeilWorldSettings> worldsBefore =
+                settings == null ? java.util.Map.of() : settings.worlds();
         stopUpdateChecker();
         stopTelemetry();
-        stopVeil();
-        reloadConfig();
-        this.lang = VeilLang.load(this);
-        this.metrics = new VeilMetrics();
-        startVeil(false);
+        // Keep the old packet listener registered until the new one is: on
+        // Folia chunks keep being sent from region threads during a reload,
+        // and in the gap they went out with real data. The old listener's
+        // engine is stopped, so it treats every chunk as hidden (fail closed);
+        // briefly running both is harmless because rewriting is idempotent.
+        ProtocolChunkListener previousListener = protocolChunkListener;
+        protocolChunkListener = null;
+        try {
+            stopVeil();
+            reloadConfig();
+            this.lang = VeilLang.load(this);
+            this.metrics = new VeilMetrics();
+            startVeil(false);
+        } finally {
+            if (previousListener != null) {
+                previousListener.stop();
+            }
+        }
+        if (veilRuntimeEnabled && veilEngine != null && settings != null) {
+            veilEngine.resendChunksInWorlds(
+                    VeilSettings.worldsWithChangedChunkConcealment(worldsBefore, settings.worlds()));
+        }
         this.updateChecker = UpdateChecker.start(this);
         this.telemetry = VeilTelemetry.start(this);
         if (restoreDebug && veilRuntimeEnabled) {
@@ -117,9 +138,9 @@ public final class ChunkVeilPlugin extends JavaPlugin {
 
         unregisterVeilListener();
         veilRuntimeEnabled = false;
-        getLogger().warning("ChunkVeil runtime disabled: " + reason + " Restored "
-                + restoreResult.players() + " players and refreshed "
-                + restoreResult.chunks() + " chunks.");
+        getLogger().warning("ChunkVeil runtime disabled: " + reason + " Restoring real chunks for "
+                + restoreResult.players() + " players (" + restoreResult.chunks()
+                + " chunks, resent per player over the next ticks).");
         fireProtectionStatusEvent(false, cause, reason);
         return restoreResult;
     }
@@ -277,6 +298,11 @@ public final class ChunkVeilPlugin extends JavaPlugin {
         return protocolChunkListener == null ? null : protocolChunkListener.lastChunkPacketFormat();
     }
 
+    long[] chunkRewriteCacheStats() {
+        ProtocolChunkListener listener = protocolChunkListener;
+        return listener == null ? new long[]{0, 0} : listener.chunkRewriteCacheStats();
+    }
+
     String lastChunkWorld() {
         return protocolChunkListener == null ? null : protocolChunkListener.lastChunkWorld();
     }
@@ -425,8 +451,6 @@ public final class ChunkVeilPlugin extends JavaPlugin {
                 + " revealScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.revealScanMaxMillis())
                 + " packetRewriteAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.packetChunkRewriteAverageMillis())
                 + " packetRewriteMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.packetChunkRewriteMaxMillis())
-                + " chunkUpdateMaskAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkUpdateMaskAverageMillis())
-                + " chunkUpdateMaskMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.chunkUpdateMaskMaxMillis())
                 + " entityScanAvgMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanAverageMillis())
                 + " entityScanMaxMs=" + String.format(java.util.Locale.ROOT, "%.3f", metrics.entityScanMaxMillis())
                 + " entityScanCandidates=" + metrics.entityScanCandidates()

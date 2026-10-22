@@ -45,7 +45,7 @@ At runtime, `/chunkveil verify` separates protection readiness from evidence. Ea
 | Entity spawn packets (all spawn types) | Yes | `hide-entities: true`, entity in hidden area | Manual |
 | Entity follow-up packets (metadata, equipment, movement, velocity, effects, sounds, mount/attach, attributes) | Yes | Entity currently hidden for the viewer | Manual |
 | Entity destroy packets | Passed through | Used to un-track hidden entities | Manual |
-| Player entities underground | Optional | `hide-players: true` (off by default) | Manual |
+| Player entities underground | Optional | `hide-players: true` (off by default). A hidden player is also removed from the viewer's tab list until revealed (Paper's player hiding does this). | Manual |
 
 ## Secondary information
 
@@ -66,6 +66,7 @@ At runtime, `/chunkveil verify` separates protection readiness from evidence. Ea
 | --- | --- | --- |
 | Light in a section crossed by `hide-below-y` | Partial | The section is left intact to avoid corrupting visible lighting above the cutoff. Align the cutoff to a 16-block boundary to remove this edge. |
 | Cave/tunnel shapes with `hide-air: false` | No | Intentional default trade-off, documented everywhere. Enable `hide-air: true` to close it. |
+| Chunk heightmaps | No | Heightmaps are sent unchanged. A column open to the sky all the way down past `hide-below-y` (for example a base shaft) reports the depth of its floor. With `hide-air: false` this adds nothing (the shaft's air is sent as air anyway); with `hide-air: true` it leaks the floor depth of sky-open columns only. Rewriting heightmaps would mean parsing a format that changed in 1.21.5 inside the fail-closed chunk path, for a low-value leak. |
 | Anything above `hide-below-y` | No | Out of product scope by design. |
 | Plugins rewriting packets after ChunkVeil | No | ChunkVeil uses a late listener priority, but cannot control other plugins. Test your stack. |
 | Combat/movement/mining-behaviour cheats | No | ChunkVeil is not an anti-cheat. |

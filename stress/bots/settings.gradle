@@ -1,0 +1,3 @@
+// Standalone build: not part of the plugin build. Build with the repo's
+// wrapper: ./gradlew -p stress/bots shadowJar
+rootProject.name = 'chunkveil-stress-bots'

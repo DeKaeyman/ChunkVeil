@@ -32,10 +32,13 @@ final class VeilListener implements Listener {
         if (to == null) {
             return;
         }
+        // Moves within a chunk need nothing here: the per-player worker runs
+        // the (rate-limited) view scan every tick, which also covers vehicle
+        // movement that fires no move event. Crossing into a new chunk still
+        // refreshes immediately.
         if (from.getBlockX() >> 4 == to.getBlockX() >> 4
                 && from.getBlockZ() >> 4 == to.getBlockZ() >> 4
                 && from.getWorld().equals(to.getWorld())) {
-            veilEngine.refreshVisibleChunks(event.getPlayer());
             return;
         }
 
@@ -48,10 +51,11 @@ final class VeilListener implements Listener {
         if (to == null) {
             return;
         }
+        // Cross-world teleports are reset by PlayerChangedWorldEvent. This
+        // event fires before the player moves, so scanning now would scan the
+        // departure point: rescan once the teleport has happened.
         if (event.getFrom().getWorld().equals(to.getWorld())) {
-            veilEngine.rescanPlayer(event.getPlayer());
-        } else {
-            veilEngine.resetPlayer(event.getPlayer());
+            veilEngine.rescanPlayerAfterTeleport(event.getPlayer());
         }
     }
 

@@ -193,8 +193,8 @@ worlds:
     hide-players: false
   world_the_end:
     enabled: false
-    hide-below-y: 0
-    min-y: -64
+    hide-below-y: 48
+    min-y: 0
     default-fake-block: END_STONE
     hide-air: false
     hide-entities: true
@@ -251,7 +251,7 @@ When `false`, air stays air and only non-air blocks are faked. This is faster an
 Hides mobs, item drops, minecarts, armor stands, item frames, and similar entities below the hidden Y range when their chunk is hidden.
 
 `hide-players`
-Also hides players below the hidden Y range. Default is `false` because hiding players can affect PvP and moderation.
+Also hides players below the hidden Y range. Default is `false` because hiding players can affect PvP and moderation. A hidden player also disappears from the viewer's tab list until they are revealed again: Paper's player hiding removes them from it.
 
 `view-reveal-front/side/back-horizontal-rays`
 Reveal rays are weighted toward the player's view direction: front > sides > back. More rays give more accurate reveals at a higher CPU cost per scan.

@@ -28,6 +28,7 @@ Please report privately (see below) if you find any of the following:
 These are documented, intentional limitations — feel free to open a regular issue to discuss them, but they are not security reports:
 
 - Cave and tunnel shapes being visible with `hide-air: false` (the default; documented trade-off).
+- Chunk heightmaps revealing the floor depth of a column that is open to the sky down past the cutoff (see docs/COVERAGE.md).
 - Information above the configured `hide-below-y` cutoff (out of scope by design).
 - Another plugin rewriting the same packets after ChunkVeil and restoring real data.
 - Combat, movement, or other gameplay cheats — ChunkVeil is not an anti-cheat.

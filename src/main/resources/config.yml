@@ -71,6 +71,8 @@ worlds:
 
     # Also hide underground players. Usually false — client-side player
     # hiding can cause visual glitches for the affected player.
+    # Note: a hidden player is also removed from the viewer's tab list
+    # (Paper's player hiding does that) until they are revealed again.
     hide-players: false
 
   world_nether:
@@ -82,10 +84,12 @@ worlds:
     hide-entities: true
     hide-players: false
 
+  # The End starts at y=0, so its cutoff must be above 0 to hide anything.
+  # 48 hides the lower part of the islands where bases are dug in.
   world_the_end:
     enabled: false
-    hide-below-y: 0
-    min-y: -64
+    hide-below-y: 48
+    min-y: 0
     default-fake-block: END_STONE
     hide-air: false
     hide-entities: true

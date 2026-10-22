@@ -7,22 +7,23 @@ ChunkVeil keeps two different kinds of evidence separate:
 
 Boot success proves initialization compatibility. It does not claim that every packet path was exercised by a real client; those paths remain `INITIALIZED` until real traffic exercises them.
 
-## Pinned 1.0.2 matrix
+## Pinned boot matrix (1.2.0-beta.1)
 
 | Paper artifact | ProtocolLib artifact | Java | Current evidence |
 | --- | --- | --- | --- |
+| 1.21.4 build 232 | 5.4.0 stable | 21 | CI boot gates the release; covers the pre-1.21.5 length-prefixed chunk format |
 | 1.21.8 build 60 | 5.4.0 stable | 21 | CI boot passed; 1.0.0 multi-player gameplay passed |
-| 1.21.11 build 132 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.1/1.0.2 fixes gameplay passed |
-| 26.1.2 build 74 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
-| 26.2 build 62 | dev asset updated 2026-08-18 | 25 | CI boot passed; 1.0.0 multi-player gameplay passed |
+| 1.21.11 build 132 | dev asset updated 2026-10-06 | 25 | CI boot gates the release; 1.0.1/1.0.2 fixes gameplay passed |
+| 26.1.2 build 74 | dev asset updated 2026-10-06 | 25 | CI boot gates the release; 1.0.0 multi-player gameplay passed |
+| 26.2 build 62 | dev asset updated 2026-10-06 | 25 | CI boot gates the release; 1.2.0-beta.1 stress tests (10 to 100 bots, build 134 locally) passed |
 
-## Pinned experimental Folia matrix (1.1.0-rc.x)
+## Pinned experimental Folia matrix
 
 | Folia artifact | ProtocolLib artifact | Java | Current evidence |
 | --- | --- | --- | --- |
-| 1.21.11 build 14 | dev asset updated 2026-09-01 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
-| 26.1.2 build 8 | dev asset updated 2026-09-01 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
-| 26.2 build 7 | dev asset updated 2026-09-01 | 25 | CI boot gates the release; no gameplay evidence yet |
+| 1.21.11 build 14 | dev asset updated 2026-10-06 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
+| 26.1.2 build 8 | dev asset updated 2026-10-06 | 25 | Local boot + `verify --ci` passed; CI boot gates the release |
+| 26.2 build 7 | dev asset updated 2026-10-06 | 25 | CI boot gates the release; 1.2.0-beta.1 stress test (10 bots) passed |
 
 Since 1.1.0-rc.2, every boot also exercises the startup ProtocolLib
 compatibility probe: an incompatible ProtocolLib build (such as 5.4.0 on
@@ -35,6 +36,12 @@ apart to tick in independent regions. The upstream ProtocolLib `dev-build`
 asset moved after 2026-08-18, so the pinned dev checksum was refreshed to the
 2026-09-01 asset; the Paper dev combinations must be re-verified against it
 before the next release (their snapshot status is `boot-ci-only` until then).
+
+The upstream `dev-build` asset moved again on 2026-10-06; 1.2.0-beta.1 pins
+that asset. Minecraft 26.3 is not supported yet: with this ProtocolLib build,
+ProtocolLib's light-data wrapper fails to initialise on 26.3 and ChunkVeil
+refuses to send concealed chunks (fail-closed). Load and performance testing
+uses the stress harness in `stress/` (see `stress/README.md`).
 
 Local test servers: `./gradlew runServer` (Paper, `run/`) and
 `./gradlew runFolia` (Folia, `run/folia`, port 25580, ProtocolLib downloaded

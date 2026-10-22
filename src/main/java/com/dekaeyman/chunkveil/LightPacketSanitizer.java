@@ -17,12 +17,32 @@ final class LightPacketSanitizer {
             int minHeight,
             int hideBelowY
     ) {
-        int changed = sanitizeUpdates(skyMask, skyUpdates, minHeight, hideBelowY);
-        changed += sanitizeUpdates(blockMask, blockUpdates, minHeight, hideBelowY);
+        return sanitize(skyMask, skyUpdates, blockMask, blockUpdates, minHeight, minHeight, hideBelowY);
+    }
+
+    /**
+     * Darkens light sections overlapping the concealed band
+     * {@code hideMinY <= y < hideBelowY} that end at or below the cutoff
+     * (sections crossing hide-below-y are left intact). When the band starts
+     * at the world bottom, the extra light section below the world is
+     * included too.
+     */
+    static int sanitize(
+            BitSet skyMask,
+            List<byte[]> skyUpdates,
+            BitSet blockMask,
+            List<byte[]> blockUpdates,
+            int minHeight,
+            int hideMinY,
+            int hideBelowY
+    ) {
+        int lowerBound = hideMinY <= minHeight ? Integer.MIN_VALUE : hideMinY;
+        int changed = sanitizeUpdates(skyMask, skyUpdates, minHeight, lowerBound, hideBelowY);
+        changed += sanitizeUpdates(blockMask, blockUpdates, minHeight, lowerBound, hideBelowY);
         return changed;
     }
 
-    private static int sanitizeUpdates(BitSet mask, List<byte[]> updates, int minHeight, int hideBelowY) {
+    private static int sanitizeUpdates(BitSet mask, List<byte[]> updates, int minHeight, int lowerBound, int hideBelowY) {
         if (mask == null || updates == null || updates.isEmpty()) {
             return 0;
         }
@@ -43,7 +63,12 @@ final class LightPacketSanitizer {
                 throw new IllegalArgumentException("Light update array must contain exactly "
                         + LIGHT_ARRAY_BYTES + " bytes");
             }
-            if (sectionMaxYExclusive <= hideBelowY && containsLight(update)) {
+            // A section crossed by min-y is darkened too (fail closed): its
+            // visible part lies below the band, deep underground, so the cost
+            // is a little darkness there. A section crossed by hide-below-y is
+            // left intact, because its visible part is the playable area
+            // above the cutoff.
+            if (sectionMaxYExclusive > lowerBound && sectionMaxYExclusive <= hideBelowY && containsLight(update)) {
                 updates.set(updateIndex, new byte[LIGHT_ARRAY_BYTES]);
                 changed++;
             }

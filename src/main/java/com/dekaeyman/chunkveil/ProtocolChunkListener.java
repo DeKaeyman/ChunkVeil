@@ -31,13 +31,16 @@ final class ProtocolChunkListener {
     private final VeilMetrics metrics;
     private final VeilSettings settings;
     private final boolean sectionBlockCountIsLeInt;
+    private final boolean dataArrayLengthPrefixed;
     private final AtomicBoolean packetBlockRewriteBroken = new AtomicBoolean();
     private final AtomicBoolean failClosedScheduled = new AtomicBoolean();
     private final PacketSecurityState securityState = new PacketSecurityState();
     private final PacketProtectionHealth protectionHealth = new PacketProtectionHealth();
     private final Map<Material, ChunkPacketBlockRewriter> blockRewriters = new ConcurrentHashMap<>();
     private final Map<Material, WrappedBlockData> fakeBlockData = new ConcurrentHashMap<>();
-    private int airBlockStateId;
+    private int[] airStateIds;
+    private volatile PacketAdapter adapter;
+    private int globalPaletteBits;
     private volatile String lastChunkPacketFormat;
     private volatile String lastChunkWorld;
 
@@ -47,6 +50,7 @@ final class ProtocolChunkListener {
         this.metrics = metrics;
         this.settings = settings;
         this.sectionBlockCountIsLeInt = sectionBlockCountIsLeInt();
+        this.dataArrayLengthPrefixed = ChunkPacketBlockRewriter.dataArrayLengthPrefixed(Bukkit.getMinecraftVersion());
     }
 
     static ProtocolChunkListener start(ChunkVeilPlugin plugin, VeilEngine veilEngine, VeilSettings settings, VeilMetrics metrics) {
@@ -97,18 +101,31 @@ final class ProtocolChunkListener {
 
     private void initializeBlockRewriter(VeilSettings settings) {
         try {
-            this.airBlockStateId = NmsBlockStateIds.defaultStateId(Material.AIR);
+            // Air-like blocks have a single block state each, so the default
+            // state id is the only id they ever appear as in chunk data.
+            this.airStateIds = new int[]{
+                    NmsBlockStateIds.defaultStateId(Material.AIR),
+                    NmsBlockStateIds.defaultStateId(Material.CAVE_AIR),
+                    NmsBlockStateIds.defaultStateId(Material.VOID_AIR)
+            };
+            this.globalPaletteBits = NmsBlockStateIds.globalPaletteBits();
             for (VeilWorldSettings worldSettings : settings.worlds().values()) {
                 rewriterFor(worldSettings.defaultFakeBlock());
             }
-            plugin.getLogger().info("Packet section rewrite enabled with per-world fake block support.");
+            plugin.getLogger().info("Packet section rewrite enabled with per-world fake block support (global palette "
+                    + globalPaletteBits + " bits).");
         } catch (RuntimeException exception) {
             throw new IllegalStateException("Could not initialize packet section rewrite: " + exception.getMessage(), exception);
         }
     }
 
     void stop() {
-        protocolManager.removePacketListeners(plugin);
+        // Only this listener: on reload the next one is already registered.
+        PacketAdapter registered = adapter;
+        if (registered != null) {
+            protocolManager.removePacketListener(registered);
+            adapter = null;
+        }
     }
 
     boolean packetRewriteActive() {
@@ -136,135 +153,203 @@ final class ProtocolChunkListener {
         return lastChunkWorld;
     }
 
+    /** {hits, misses} of the chunk rewrite caches of all fake-block rewriters. */
+    long[] chunkRewriteCacheStats() {
+        long hits = 0;
+        long misses = 0;
+        for (ChunkPacketBlockRewriter rewriter : blockRewriters.values()) {
+            hits += rewriter.cacheHits();
+            misses += rewriter.cacheMisses();
+        }
+        return new long[]{hits, misses};
+    }
+
     private void register(VeilEngine veilEngine, VeilSettings settings) {
-        protocolManager.addPacketListener(new PacketAdapter(
+        adapter = new PacketAdapter(
                 plugin,
                 ListenerPriority.HIGHEST,
-                supportedServerPackets()
+                supportedServerPackets(settings)
         ) {
             @Override
             public void onPacketSending(PacketEvent event) {
-                if (securityState.cancelIfTripped(() -> event.setCancelled(true))) {
-                    metrics.countSecurityPacketCancelled();
-                    return;
-                }
-                if (isEntitySpawnPacket(event.getPacketType())) {
-                    cancelHiddenEntitySpawn(event, veilEngine);
-                    return;
-                }
-                if (isEntityFollowUpPacket(event.getPacketType())) {
-                    cancelHiddenEntityPacket(event, veilEngine);
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.BLOCK_CHANGE) {
-                    rewriteBlockChange(event, veilEngine);
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.MULTI_BLOCK_CHANGE) {
-                    rewriteMultiBlockChange(event, veilEngine);
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.TILE_ENTITY_DATA) {
-                    cancelHiddenBlockEntityUpdate(event, veilEngine);
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.EXPLOSION) {
-                    if (settings.cancelExplosionsInHiddenZones()) {
-                        cancelHiddenExplosion(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.WORLD_EVENT) {
-                    if (settings.cancelWorldEventsInHiddenZones()) {
-                        cancelHiddenWorldEvent(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.BLOCK_BREAK_ANIMATION) {
-                    if (settings.cancelBlockCrackInHiddenZones()) {
-                        cancelHiddenBlockCrack(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.CUSTOM_SOUND_EFFECT
-                        || event.getPacketType() == PacketType.Play.Server.NAMED_SOUND_EFFECT) {
-                    if (settings.cancelPositionalSoundsInHiddenZones()) {
-                        cancelHiddenPositionalSound(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.WORLD_PARTICLES) {
-                    if (settings.cancelParticlesInHiddenZones()) {
-                        cancelHiddenParticle(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.ADD_VIBRATION_SIGNAL) {
-                    if (settings.cancelVibrationsInHiddenZones()) {
-                        cancelHiddenVibration(event, veilEngine);
-                    }
-                    return;
-                }
-                if (event.getPacketType() == PacketType.Play.Server.LIGHT_UPDATE) {
-                    if (settings.sanitizeLightInHiddenZones()) {
-                        sanitizeStandaloneLightUpdate(event, veilEngine);
-                    }
-                    return;
-                }
-
-                Player player = event.getPlayer();
-                int chunkX;
-                int chunkZ;
-
+                long started = System.nanoTime();
                 try {
-                    chunkX = event.getPacket().getIntegers().read(0);
-                    chunkZ = event.getPacket().getIntegers().read(1);
-                } catch (RuntimeException exception) {
-                    trip(event, PacketSecurityState.ProtectedPath.CHUNK,
-                            packetCompatibilityFailure("Could not read outgoing chunk packet coordinates", exception));
-                    return;
-                }
-
-                boolean hidden = veilEngine.shouldHideChunk(player, chunkX, chunkZ);
-                if (!hidden) {
-                    metrics.countChunkPacket(false, false);
-                    return;
-                }
-
-                // Work on a deep clone and publish it only after block states,
-                // block entities, and light have all succeeded. A failure can
-                // therefore never send a partially protected chunk.
-                PacketContainer originalPacket = event.getPacket();
-                try {
-                    event.setPacket(originalPacket.deepClone());
-                    int rewrittenSections = rewriteHiddenChunkSections(event, player, chunkX, chunkZ, settings);
-                    if (rewrittenSections <= 0) {
-                        throw new IllegalArgumentException("no concealed chunk sections were rewritten");
-                    }
-                    stripHiddenBlockEntities(event, settings.hideBelowY(player.getWorld()));
-                    if (settings.sanitizeLightInHiddenZones()) {
-                        sanitizeLightData(event, player.getWorld());
-                        protectionHealth.observed(PacketSecurityState.ProtectedPath.LIGHT);
-                    }
-                    protectionHealth.observed(PacketSecurityState.ProtectedPath.CHUNK);
-                    protectionHealth.enforced(PacketSecurityState.ProtectedPath.CHUNK);
-                    lastChunkPacketFormat = sectionBlockCountIsLeInt ? "26.x little-endian count" : "1.21.x big-endian count";
-                    lastChunkWorld = player.getWorld().getName();
-                    metrics.countChunkPacket(true, true);
-                    VeilScheduler.runOnEntity(plugin, player, () -> {
-                        if (!securityState.isTripped()) {
-                            veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ);
-                        }
-                    });
-                } catch (Throwable throwable) {
-                    event.setPacket(originalPacket);
-                    trip(event, PacketSecurityState.ProtectedPath.CHUNK, packetCompatibilityFailure(
-                            "Could not atomically protect chunk " + chunkX + "," + chunkZ, throwable),
-                            player.getWorld(), chunkX, chunkZ);
-                    return;
+                    handleSending(event, veilEngine, settings);
+                } finally {
+                    metrics.recordPacketHandlingNanos(pathOf(event.getPacketType()), System.nanoTime() - started);
                 }
             }
-        });
+        };
+        protocolManager.addPacketListener(adapter);
+    }
+
+    /** Which protected path a packet type is handled (and timed) under. */
+    private PacketSecurityState.ProtectedPath pathOf(PacketType type) {
+        if (isEntitySpawnPacket(type)) {
+            return PacketSecurityState.ProtectedPath.ENTITY_SPAWN;
+        }
+        if (isEntityFollowUpPacket(type)) {
+            return PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP;
+        }
+        if (type == PacketType.Play.Server.BLOCK_CHANGE) {
+            return PacketSecurityState.ProtectedPath.BLOCK_CHANGE;
+        }
+        if (type == PacketType.Play.Server.MULTI_BLOCK_CHANGE) {
+            return PacketSecurityState.ProtectedPath.MULTI_BLOCK_CHANGE;
+        }
+        if (type == PacketType.Play.Server.TILE_ENTITY_DATA) {
+            return PacketSecurityState.ProtectedPath.BLOCK_ENTITY;
+        }
+        if (type == PacketType.Play.Server.EXPLOSION) {
+            return PacketSecurityState.ProtectedPath.EXPLOSION;
+        }
+        if (type == PacketType.Play.Server.WORLD_EVENT) {
+            return PacketSecurityState.ProtectedPath.WORLD_EVENT;
+        }
+        if (type == PacketType.Play.Server.BLOCK_BREAK_ANIMATION) {
+            return PacketSecurityState.ProtectedPath.BLOCK_CRACK;
+        }
+        if (type == PacketType.Play.Server.CUSTOM_SOUND_EFFECT || type == PacketType.Play.Server.NAMED_SOUND_EFFECT) {
+            return PacketSecurityState.ProtectedPath.POSITIONAL_SOUND;
+        }
+        if (type == PacketType.Play.Server.WORLD_PARTICLES) {
+            return PacketSecurityState.ProtectedPath.PARTICLE;
+        }
+        if (type == PacketType.Play.Server.ADD_VIBRATION_SIGNAL) {
+            return PacketSecurityState.ProtectedPath.VIBRATION;
+        }
+        if (type == PacketType.Play.Server.LIGHT_UPDATE) {
+            return PacketSecurityState.ProtectedPath.LIGHT;
+        }
+        return PacketSecurityState.ProtectedPath.CHUNK;
+    }
+
+    private void handleSending(PacketEvent event, VeilEngine veilEngine, VeilSettings settings) {
+        if (securityState.cancelIfTripped(() -> event.setCancelled(true))) {
+            metrics.countSecurityPacketCancelled();
+            return;
+        }
+        if (isEntitySpawnPacket(event.getPacketType())) {
+            cancelHiddenEntitySpawn(event, veilEngine);
+            return;
+        }
+        if (isEntityFollowUpPacket(event.getPacketType())) {
+            cancelHiddenEntityPacket(event, veilEngine);
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.BLOCK_CHANGE) {
+            rewriteBlockChange(event, veilEngine);
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.MULTI_BLOCK_CHANGE) {
+            rewriteMultiBlockChange(event, veilEngine);
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.TILE_ENTITY_DATA) {
+            cancelHiddenBlockEntityUpdate(event, veilEngine);
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.EXPLOSION) {
+            if (settings.cancelExplosionsInHiddenZones()) {
+                cancelHiddenExplosion(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.WORLD_EVENT) {
+            if (settings.cancelWorldEventsInHiddenZones()) {
+                cancelHiddenWorldEvent(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.BLOCK_BREAK_ANIMATION) {
+            if (settings.cancelBlockCrackInHiddenZones()) {
+                cancelHiddenBlockCrack(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.CUSTOM_SOUND_EFFECT
+                || event.getPacketType() == PacketType.Play.Server.NAMED_SOUND_EFFECT) {
+            if (settings.cancelPositionalSoundsInHiddenZones()) {
+                cancelHiddenPositionalSound(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.WORLD_PARTICLES) {
+            if (settings.cancelParticlesInHiddenZones()) {
+                cancelHiddenParticle(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.ADD_VIBRATION_SIGNAL) {
+            if (settings.cancelVibrationsInHiddenZones()) {
+                cancelHiddenVibration(event, veilEngine);
+            }
+            return;
+        }
+        if (event.getPacketType() == PacketType.Play.Server.LIGHT_UPDATE) {
+            if (settings.sanitizeLightInHiddenZones()) {
+                sanitizeStandaloneLightUpdate(event, veilEngine);
+            }
+            return;
+        }
+
+        Player player = event.getPlayer();
+        int chunkX;
+        int chunkZ;
+
+        try {
+            chunkX = event.getPacket().getIntegers().read(0);
+            chunkZ = event.getPacket().getIntegers().read(1);
+        } catch (RuntimeException exception) {
+            trip(event, PacketSecurityState.ProtectedPath.CHUNK,
+                    packetCompatibilityFailure("Could not read outgoing chunk packet coordinates", exception));
+            return;
+        }
+
+        boolean hidden = veilEngine.shouldHideChunk(player, chunkX, chunkZ);
+        if (!hidden) {
+            metrics.countChunkPacket(false, false);
+            return;
+        }
+
+        // Work on a deep clone and publish it only after block states,
+        // block entities, and light have all succeeded. A failure can
+        // therefore never send a partially protected chunk.
+        PacketContainer originalPacket = event.getPacket();
+        try {
+            event.setPacket(originalPacket.deepClone());
+            // One read and one write of the chunk data wrapper: each
+            // read converts the whole structure, block entities too.
+            WrappedLevelChunkData.ChunkData chunkData = event.getPacket().getLevelChunkData().read(0);
+            int rewrittenSections = rewriteHiddenChunkSections(chunkData, player, settings);
+            if (rewrittenSections <= 0) {
+                throw new IllegalArgumentException("no concealed chunk sections were rewritten");
+            }
+            stripHiddenBlockEntities(chunkData, settings.hideMinY(player.getWorld()), settings.hideBelowY(player.getWorld()));
+            event.getPacket().getLevelChunkData().write(0, chunkData);
+            if (settings.sanitizeLightInHiddenZones()) {
+                sanitizeLightData(event, player.getWorld());
+                protectionHealth.observed(PacketSecurityState.ProtectedPath.LIGHT);
+            }
+            protectionHealth.observed(PacketSecurityState.ProtectedPath.CHUNK);
+            protectionHealth.enforced(PacketSecurityState.ProtectedPath.CHUNK);
+            lastChunkPacketFormat = sectionBlockCountIsLeInt ? "26.x little-endian count"
+                    : dataArrayLengthPrefixed ? "1.21-1.21.4 length-prefixed arrays"
+                    : "1.21.5+ big-endian count";
+            lastChunkWorld = player.getWorld().getName();
+            metrics.countChunkPacket(true, true);
+            VeilScheduler.runOnEntity(plugin, player, () -> {
+                if (!securityState.isTripped()) {
+                    veilEngine.markChunkHiddenByPacketRewrite(player, chunkX, chunkZ);
+                }
+            });
+        } catch (Throwable throwable) {
+            event.setPacket(originalPacket);
+            trip(event, PacketSecurityState.ProtectedPath.CHUNK, packetCompatibilityFailure(
+                    "Could not atomically protect chunk " + chunkX + "," + chunkZ, throwable),
+                    player.getWorld(), chunkX, chunkZ);
+            return;
+        }
     }
 
     private static boolean sectionBlockCountIsLeInt() {
@@ -277,47 +362,79 @@ final class ProtocolChunkListener {
         }
     }
 
-    private List<PacketType> supportedServerPackets() {
+    /**
+     * Packet types to listen to. ProtocolLib builds a PacketEvent for every
+     * packet of every subscribed type, so types whose feature is switched
+     * off are not subscribed at all (the listener is re-created on reload).
+     * Terrain and block updates are always protected. While a security trip
+     * is active only subscribed types are cancelled; unsubscribed types carry
+     * nothing ChunkVeil was configured to protect.
+     */
+    private List<PacketType> supportedServerPackets(VeilSettings settings) {
         List<PacketType> packetTypes = new ArrayList<>();
         addIfSupported(packetTypes, PacketType.Play.Server.MAP_CHUNK);
         addIfSupported(packetTypes, PacketType.Play.Server.BLOCK_CHANGE);
         addIfSupported(packetTypes, PacketType.Play.Server.MULTI_BLOCK_CHANGE);
         addIfSupported(packetTypes, PacketType.Play.Server.TILE_ENTITY_DATA);
-        addIfSupported(packetTypes, PacketType.Play.Server.SPAWN_ENTITY);
-        addIfSupported(packetTypes, PacketType.Play.Server.SPAWN_ENTITY_LIVING);
-        addIfSupported(packetTypes, PacketType.Play.Server.SPAWN_ENTITY_EXPERIENCE_ORB);
-        addIfSupported(packetTypes, PacketType.Play.Server.SPAWN_ENTITY_PAINTING);
-        addIfSupported(packetTypes, PacketType.Play.Server.NAMED_ENTITY_SPAWN);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_METADATA);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_EQUIPMENT);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_VELOCITY);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_TELEPORT);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_POSITION_SYNC);
-        addIfSupported(packetTypes, PacketType.Play.Server.REL_ENTITY_MOVE);
-        addIfSupported(packetTypes, PacketType.Play.Server.REL_ENTITY_MOVE_LOOK);
-        addIfSupported(packetTypes, PacketType.Play.Server.MOVE_MINECART);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_LOOK);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_HEAD_ROTATION);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_STATUS);
-        addIfSupported(packetTypes, PacketType.Play.Server.ANIMATION);
-        addIfSupported(packetTypes, PacketType.Play.Server.ATTACH_ENTITY);
-        addIfSupported(packetTypes, PacketType.Play.Server.MOUNT);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_DESTROY);
-        addIfSupported(packetTypes, PacketType.Play.Server.UPDATE_ATTRIBUTES);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_EFFECT);
-        addIfSupported(packetTypes, PacketType.Play.Server.REMOVE_ENTITY_EFFECT);
-        addIfSupported(packetTypes, PacketType.Play.Server.ENTITY_SOUND);
-        addIfSupported(packetTypes, PacketType.Play.Server.COLLECT);
-        addIfSupported(packetTypes, PacketType.Play.Server.EXPLOSION);
-        addIfSupported(packetTypes, PacketType.Play.Server.WORLD_EVENT);
-        addIfSupported(packetTypes, PacketType.Play.Server.BLOCK_BREAK_ANIMATION);
-        addIfSupported(packetTypes, PacketType.Play.Server.CUSTOM_SOUND_EFFECT);
-        addIfSupported(packetTypes, PacketType.Play.Server.NAMED_SOUND_EFFECT);
-        addIfSupported(packetTypes, PacketType.Play.Server.WORLD_PARTICLES);
-        addIfSupported(packetTypes, PacketType.Play.Server.ADD_VIBRATION_SIGNAL);
-        addIfSupported(packetTypes, PacketType.Play.Server.LIGHT_UPDATE);
+        if (settings.anyWorldHidesEntities()) {
+            // Spawns and follow-ups belong together: a cancelled spawn relies
+            // on its metadata/equipment/movement packets being cancelled too.
+            for (PacketType packetType : ENTITY_PACKET_TYPES) {
+                addIfSupported(packetTypes, packetType);
+            }
+        }
+        if (settings.cancelExplosionsInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.EXPLOSION);
+        }
+        if (settings.cancelWorldEventsInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.WORLD_EVENT);
+        }
+        if (settings.cancelBlockCrackInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.BLOCK_BREAK_ANIMATION);
+        }
+        if (settings.cancelPositionalSoundsInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.CUSTOM_SOUND_EFFECT);
+            addIfSupported(packetTypes, PacketType.Play.Server.NAMED_SOUND_EFFECT);
+        }
+        if (settings.cancelParticlesInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.WORLD_PARTICLES);
+        }
+        if (settings.cancelVibrationsInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.ADD_VIBRATION_SIGNAL);
+        }
+        if (settings.sanitizeLightInHiddenZones()) {
+            addIfSupported(packetTypes, PacketType.Play.Server.LIGHT_UPDATE);
+        }
         return packetTypes;
     }
+
+    private static final PacketType[] ENTITY_PACKET_TYPES = {
+            PacketType.Play.Server.SPAWN_ENTITY,
+            PacketType.Play.Server.SPAWN_ENTITY_LIVING,
+            PacketType.Play.Server.SPAWN_ENTITY_EXPERIENCE_ORB,
+            PacketType.Play.Server.SPAWN_ENTITY_PAINTING,
+            PacketType.Play.Server.NAMED_ENTITY_SPAWN,
+            PacketType.Play.Server.ENTITY_METADATA,
+            PacketType.Play.Server.ENTITY_EQUIPMENT,
+            PacketType.Play.Server.ENTITY_VELOCITY,
+            PacketType.Play.Server.ENTITY_TELEPORT,
+            PacketType.Play.Server.ENTITY_POSITION_SYNC,
+            PacketType.Play.Server.REL_ENTITY_MOVE,
+            PacketType.Play.Server.REL_ENTITY_MOVE_LOOK,
+            PacketType.Play.Server.MOVE_MINECART,
+            PacketType.Play.Server.ENTITY_LOOK,
+            PacketType.Play.Server.ENTITY_HEAD_ROTATION,
+            PacketType.Play.Server.ENTITY_STATUS,
+            PacketType.Play.Server.ANIMATION,
+            PacketType.Play.Server.ATTACH_ENTITY,
+            PacketType.Play.Server.MOUNT,
+            PacketType.Play.Server.ENTITY_DESTROY,
+            PacketType.Play.Server.UPDATE_ATTRIBUTES,
+            PacketType.Play.Server.ENTITY_EFFECT,
+            PacketType.Play.Server.REMOVE_ENTITY_EFFECT,
+            PacketType.Play.Server.ENTITY_SOUND,
+            PacketType.Play.Server.COLLECT,
+    };
 
     private void addIfSupported(List<PacketType> packetTypes, PacketType packetType) {
         if (packetType.isSupported()) {
@@ -358,6 +475,11 @@ final class ProtocolChunkListener {
 
     private void cancelHiddenEntitySpawn(PacketEvent event, VeilEngine veilEngine) {
         Player viewer = event.getPlayer();
+        if (!veilEngine.entityHidingActive(viewer)) {
+            // hide-entities off (or nothing concealed) in this world: no spawn
+            // can be hidden, so skip reading the packet entirely.
+            return;
+        }
 
         try {
             // Resolving the live entity makes ProtocolLib run a server-internal
@@ -393,6 +515,9 @@ final class ProtocolChunkListener {
 
             event.setCancelled(true);
             metrics.countEntitySpawnCancelled();
+            // Hidden before this handler returns, so the metadata/equipment
+            // packets queued right behind this spawn are cancelled too.
+            veilEngine.markEntityHiddenFromPacket(viewer.getUniqueId(), entityId, entityUuid);
             VeilScheduler.runOnEntity(plugin, viewer, () -> {
                 if (securityState.isTripped()) {
                     return;
@@ -414,6 +539,12 @@ final class ProtocolChunkListener {
     }
 
     private void cancelHiddenEntityPacket(PacketEvent event, VeilEngine veilEngine) {
+        if (!veilEngine.hasHiddenEntities(event.getPlayer())) {
+            // The vast majority of entity packets: nothing is hidden for this
+            // viewer, so none can match. Skips ProtocolLib field reads and an
+            // id list per packet (275M such packets in one field report).
+            return;
+        }
         try {
             if (!packetContainsHiddenEntity(event, veilEngine)) {
                 protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
@@ -423,7 +554,8 @@ final class ProtocolChunkListener {
             if (event.getPacketType() == PacketType.Play.Server.ENTITY_DESTROY) {
                 Player viewer = event.getPlayer();
                 for (int entityId : entityIdsInPacket(event)) {
-                    VeilScheduler.runOnEntity(plugin, viewer, () -> veilEngine.forgetEntity(viewer, entityId));
+                    VeilScheduler.runOnEntity(plugin, viewer,
+                            () -> veilEngine.forgetEntityDestroyedForClient(viewer, entityId));
                 }
                 protectionHealth.observed(PacketSecurityState.ProtectedPath.ENTITY_FOLLOW_UP);
                 return;
@@ -830,6 +962,7 @@ final class ProtocolChunkListener {
                     light.getBlockYMask(),
                     light.getBlockUpdates(),
                     world.getMinHeight(),
+                    settings.hideMinY(world),
                     settings.hideBelowY(world)
             );
             if (changed > 0) {
@@ -843,22 +976,19 @@ final class ProtocolChunkListener {
     }
 
     private int rewriteHiddenChunkSections(
-            PacketEvent event,
+            WrappedLevelChunkData.ChunkData chunkData,
             Player player,
-            int chunkX,
-            int chunkZ,
             VeilSettings settings
     ) {
         World world = player.getWorld();
         long startNanos = System.nanoTime();
         int rewrittenSections = rewriterFor(settings.defaultFakeBlock(world))
-                .rewriteHiddenSections(event, world, settings.hideBelowY(world), settings.hideAir(world));
+                .rewriteHiddenSections(chunkData, world, settings.hideMinY(world), settings.hideBelowY(world), settings.hideAir(world));
         metrics.recordPacketChunkRewriteNanos(System.nanoTime() - startNanos);
         return rewrittenSections;
     }
 
-    private void stripHiddenBlockEntities(PacketEvent event, int hideBelowY) {
-        WrappedLevelChunkData.ChunkData chunkData = event.getPacket().getLevelChunkData().read(0);
+    private void stripHiddenBlockEntities(WrappedLevelChunkData.ChunkData chunkData, int hideMinY, int hideBelowY) {
         List<WrappedLevelChunkData.BlockEntityInfo> blockEntities = chunkData.getBlockEntityInfo();
         if (blockEntities == null || blockEntities.isEmpty()) {
             return;
@@ -866,14 +996,16 @@ final class ProtocolChunkListener {
 
         List<WrappedLevelChunkData.BlockEntityInfo> visibleBlockEntities = new ArrayList<>(blockEntities.size());
         for (WrappedLevelChunkData.BlockEntityInfo blockEntity : blockEntities) {
-            if (blockEntity.getY() >= hideBelowY) {
+            int y = blockEntity.getY();
+            // Below the concealed band the real blocks are sent, so their
+            // block entities (chest contents, signs) must be kept too.
+            if (y < hideMinY || y >= hideBelowY) {
                 visibleBlockEntities.add(blockEntity);
             }
         }
 
         if (visibleBlockEntities.size() != blockEntities.size()) {
             chunkData.setBlockEntityInfo(visibleBlockEntities);
-            event.getPacket().getLevelChunkData().write(0, chunkData);
         }
     }
 
@@ -888,7 +1020,8 @@ final class ProtocolChunkListener {
     private ChunkPacketBlockRewriter rewriterFor(Material fakeBlock) {
         return blockRewriters.computeIfAbsent(fakeBlock, material -> {
             int fakeBlockStateId = NmsBlockStateIds.defaultStateId(material);
-            return new ChunkPacketBlockRewriter(fakeBlockStateId, airBlockStateId, sectionBlockCountIsLeInt);
+            return new ChunkPacketBlockRewriter(fakeBlockStateId, airStateIds, sectionBlockCountIsLeInt,
+                    dataArrayLengthPrefixed, globalPaletteBits);
         });
     }
 

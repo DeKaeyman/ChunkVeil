@@ -1,7 +1,7 @@
 package com.dekaeyman.chunkveil;
 
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 final class VeilMetrics {
     private final LongAdder chunkPackets = new LongAdder();
@@ -26,9 +26,50 @@ final class VeilMetrics {
     private final LongAdder entityScanCandidatesDeferred = new LongAdder();
     private final Timing revealScanTiming = new Timing();
     private final Timing packetChunkRewriteTiming = new Timing();
-    private final Timing chunkUpdateMaskTiming = new Timing();
     private final Timing entityScanTiming = new Timing();
     private final Timing queueProcessingTiming = new Timing();
+    // Worker ticks of tracked players; queue timing is only sampled on the
+    // ticks among these that had queued work.
+    private final LongAdder trackedWorkerTicks = new LongAdder();
+    // Time spent in the packet listener, per protected path (every packet of
+    // the subscribed types, including the fast "nothing to hide" exits).
+    private final Timing[] packetHandlingTiming = newTimings(PacketSecurityState.ProtectedPath.values().length);
+
+    private static Timing[] newTimings(int count) {
+        Timing[] timings = new Timing[count];
+        for (int i = 0; i < count; i++) {
+            timings[i] = new Timing();
+        }
+        return timings;
+    }
+
+    void recordPacketHandlingNanos(PacketSecurityState.ProtectedPath path, long nanos) {
+        packetHandlingTiming[path.ordinal()].record(nanos);
+    }
+
+    long packetHandlingSamples(PacketSecurityState.ProtectedPath path) {
+        return packetHandlingTiming[path.ordinal()].samples();
+    }
+
+    long packetHandlingTotalNanos(PacketSecurityState.ProtectedPath path) {
+        return packetHandlingTiming[path.ordinal()].totalNanos();
+    }
+
+    long revealScanTotalNanos() {
+        return revealScanTiming.totalNanos();
+    }
+
+    long packetChunkRewriteTotalNanos() {
+        return packetChunkRewriteTiming.totalNanos();
+    }
+
+    long entityScanTotalNanos() {
+        return entityScanTiming.totalNanos();
+    }
+
+    long queueProcessingTotalNanos() {
+        return queueProcessingTiming.totalNanos();
+    }
 
     void countChunkPacket(boolean hidden, boolean rewritten) {
         chunkPackets.increment();
@@ -106,10 +147,6 @@ final class VeilMetrics {
         packetChunkRewriteTiming.record(nanos);
     }
 
-    void recordChunkUpdateMaskNanos(long nanos) {
-        chunkUpdateMaskTiming.record(nanos);
-    }
-
     void recordEntityScanNanos(long nanos) {
         entityScanTiming.record(nanos);
     }
@@ -121,6 +158,23 @@ final class VeilMetrics {
 
     void recordQueueProcessingNanos(long nanos) {
         queueProcessingTiming.record(nanos);
+    }
+
+    void countTrackedWorkerTick() {
+        trackedWorkerTicks.increment();
+    }
+
+    long trackedWorkerTicks() {
+        return trackedWorkerTicks.sum();
+    }
+
+    /** Share of tracked worker ticks that had queued chunk work (1.0 before any tick). */
+    double queueBusyFraction() {
+        long ticks = trackedWorkerTicks();
+        if (ticks == 0L) {
+            return 1.0D;
+        }
+        return Math.min(1.0D, queueProcessingTiming.samples() / (double) ticks);
     }
 
     long chunkPackets() {
@@ -219,18 +273,6 @@ final class VeilMetrics {
         return packetChunkRewriteTiming.samples();
     }
 
-    double chunkUpdateMaskAverageMillis() {
-        return chunkUpdateMaskTiming.averageMillis();
-    }
-
-    double chunkUpdateMaskMaxMillis() {
-        return chunkUpdateMaskTiming.maxMillis();
-    }
-
-    long chunkUpdateMaskSamples() {
-        return chunkUpdateMaskTiming.samples();
-    }
-
     double entityScanAverageMillis() {
         return entityScanTiming.averageMillis();
     }
@@ -263,22 +305,49 @@ final class VeilMetrics {
         return queueProcessingTiming.samples();
     }
 
-    private static final class Timing {
+    /**
+     * Average over all samples since start, max over a rolling window. An
+     * all-time max was pinned forever by the first GC pause (field report:
+     * every max ~1.38 s), which made it useless for spotting current spikes.
+     */
+    static final class Timing {
+        // Two alternating windows: the max covers the last 2.5-5 minutes.
+        static final long WINDOW_MILLIS = 150_000L;
+
         private final LongAdder samples = new LongAdder();
         private final LongAdder totalNanos = new LongAdder();
-        private final AtomicLong maxNanos = new AtomicLong();
+        private final AtomicLongArray maxNanosBySlot = new AtomicLongArray(2);
+        private final AtomicLongArray windowBySlot = new AtomicLongArray(new long[]{-1L, -1L});
 
         void record(long nanos) {
+            record(nanos, System.currentTimeMillis());
+        }
+
+        void record(long nanos, long nowMillis) {
             if (nanos < 0L) {
                 return;
             }
             samples.increment();
             totalNanos.add(nanos);
-            maxNanos.accumulateAndGet(nanos, Math::max);
+            long window = nowMillis / WINDOW_MILLIS;
+            int slot = (int) (window & 1L);
+            long slotWindow = windowBySlot.get(slot);
+            if (slotWindow != window && windowBySlot.compareAndSet(slot, slotWindow, window)) {
+                // First sample of a new window takes over the stale slot. A
+                // concurrent sample may still land in the old value; that only
+                // loses or keeps one sample's max for one window.
+                maxNanosBySlot.set(slot, nanos);
+                return;
+            }
+            maxNanosBySlot.accumulateAndGet(slot, nanos, Math::max);
         }
 
         long samples() {
             return samples.sum();
+        }
+
+        long totalNanos() {
+            return totalNanos.sum();
         }
 
         double averageMillis() {
@@ -290,7 +359,20 @@ final class VeilMetrics {
         }
 
         double maxMillis() {
-            return maxNanos.get() / 1_000_000.0D;
+            return maxMillis(System.currentTimeMillis());
+        }
+
+        /** Largest sample in the current and the previous window. */
+        double maxMillis(long nowMillis) {
+            long window = nowMillis / WINDOW_MILLIS;
+            long max = 0L;
+            for (int slot = 0; slot < 2; slot++) {
+                long slotWindow = windowBySlot.get(slot);
+                if (slotWindow == window || slotWindow == window - 1) {
+                    max = Math.max(max, maxNanosBySlot.get(slot));
+                }
+            }
+            return max / 1_000_000.0D;
         }
     }
 }

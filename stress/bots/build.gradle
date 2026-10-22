@@ -1,0 +1,44 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.6'
+}
+
+group = 'com.dekaeyman.chunkveil.stress'
+version = '1.0.0'
+
+// The MCProtocolLib version must match the server's Minecraft version
+// (26.3 -> 26.3, 26.2 -> 26.2). Override with -PmcplVersion=26.2.
+def mcplVersion = providers.gradleProperty('mcplVersion').getOrElse('26.3')
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.opencollab.dev/main/' }
+    maven { url = 'https://libraries.minecraft.net/' }
+    maven { url = 'https://maven.lenni0451.net/everything/' }
+    maven { url = 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation("org.geysermc.mcprotocollib:protocol:${mcplVersion}")
+    implementation("org.slf4j:slf4j-simple:2.0.9")
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+tasks.named('shadowJar') {
+    archiveClassifier.set('')
+    archiveFileName.set("chunkveil-stress-bots-${mcplVersion}.jar")
+    manifest {
+        attributes 'Main-Class': 'com.dekaeyman.chunkveil.stress.bots.StressBots'
+    }
+    mergeServiceFiles()
+}

@@ -1,9 +1,9 @@
 {
-  "developmentVersion": "1.1.0-rc.4",
+  "developmentVersion": "1.2.0-beta.1",
   "defaultPaperMinecraft": "1.21.11",
   "defaultPaperApi": "1.21.11-R0.1-SNAPSHOT",
   "compileProtocolLib": "5.4.0",
-  "checkedAt": "2026-09-01",
+  "checkedAt": "2026-10-22",
   "protocolLib": {
     "stable-5.4.0": {
       "label": "5.4.0",
@@ -15,18 +15,26 @@
       "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
       "sha256": "fd12841320fc920aec3218462983109093ae1e2672d8c7a3619b03a11aac78e1",
       "note": "Mutable upstream dev-build URL; the checksum pins the reviewed artifact."
+    },
+    "dev-2026-10-06": {
+      "label": "dev@2026-10-06",
+      "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
+      "sha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+      "note": "Mutable upstream dev-build URL; the checksum pins the reviewed artifact. Used by the 1.2.0-beta.1 stress tests (Paper and Folia 26.2)."
     }
   },
   "combinations": [
+    {"paperVersion":"1.21.4","paperBuild":232,"java":21,"paperUrl":"https://fill-data.papermc.io/v1/objects/5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc/paper-1.21.4-232.jar","paperSha256":"5ee4f542f628a14c644410b08c94ea42e772ef4d29fe92973636b6813d4eaffc","protocolLib":"stable-5.4.0","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"},
     {"paperVersion":"1.21.8","paperBuild":60,"java":21,"paperUrl":"https://fill-data.papermc.io/v1/objects/8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e/paper-1.21.8-60.jar","paperSha256":"8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e","protocolLib":"stable-5.4.0","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
-    {"paperVersion":"1.21.11","paperBuild":132,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba/paper-1.21.11-132.jar","paperSha256":"5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba","protocolLib":"dev-2026-09-01","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
-    {"paperVersion":"26.1.2","paperBuild":74,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7/paper-26.1.2-74.jar","paperSha256":"1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7","protocolLib":"dev-2026-09-01","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
-    {"paperVersion":"26.2","paperBuild":62,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5/paper-26.2-62.jar","paperSha256":"597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5","protocolLib":"dev-2026-09-01","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
-    {"platform":"folia","paperVersion":"1.21.11","paperBuild":14,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39/folia-1.21.11-14.jar","paperSha256":"f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39","protocolLib":"dev-2026-09-01","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"},
-    {"platform":"folia","paperVersion":"26.1.2","paperBuild":8,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/607afd1c3320008e1ffd2eaee6780ace4419d5f8c527b75e79f259be79ebf57b/folia-26.1.2-8.jar","paperSha256":"607afd1c3320008e1ffd2eaee6780ace4419d5f8c527b75e79f259be79ebf57b","protocolLib":"dev-2026-09-01","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"},
-    {"platform":"folia","paperVersion":"26.2","paperBuild":7,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3/folia-26.2-7.jar","paperSha256":"128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3","protocolLib":"dev-2026-09-01","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"}
+    {"paperVersion":"1.21.11","paperBuild":132,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba/paper-1.21.11-132.jar","paperSha256":"5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba","protocolLib":"dev-2026-10-06","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
+    {"paperVersion":"26.1.2","paperBuild":74,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7/paper-26.1.2-74.jar","paperSha256":"1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7","protocolLib":"dev-2026-10-06","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
+    {"paperVersion":"26.2","paperBuild":62,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5/paper-26.2-62.jar","paperSha256":"597cb54eef27b318dfb7daef924f9bbe2816e6b0547f0f861b15b42337b6ccd5","protocolLib":"dev-2026-10-06","releaseVerified":"1.0.2","nextSnapshotStatus":"boot-ci-only"},
+    {"platform":"folia","paperVersion":"1.21.11","paperBuild":14,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39/folia-1.21.11-14.jar","paperSha256":"f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39","protocolLib":"dev-2026-10-06","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"},
+    {"platform":"folia","paperVersion":"26.1.2","paperBuild":8,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/607afd1c3320008e1ffd2eaee6780ace4419d5f8c527b75e79f259be79ebf57b/folia-26.1.2-8.jar","paperSha256":"607afd1c3320008e1ffd2eaee6780ace4419d5f8c527b75e79f259be79ebf57b","protocolLib":"dev-2026-10-06","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"},
+    {"platform":"folia","paperVersion":"26.2","paperBuild":7,"java":25,"paperUrl":"https://fill-data.papermc.io/v1/objects/128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3/folia-26.2-7.jar","paperSha256":"128a634192261cd38bb4a5dc54075018a0f896fd6c6f529e37dca6e99e32b3b3","protocolLib":"dev-2026-10-06","releaseVerified":null,"nextSnapshotStatus":"boot-ci-only"}
   ],
   "releases": [
+    {"version":"1.2.0-beta.1","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.2.0-beta.1","severity":"recommended","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Huge performance boost: chunk rewriting about 9x faster, reveal ray scans and entity scans about half the cost, no more chunk re-hide lag spikes, reveals sent only to the player who needs them, and reloads that no longer resend every chunk. Also fixes invisible or leaking entities, the 1.21.0-1.21.4 chunk format, cave_air handling, End defaults, and several Folia edge cases. Beta: please test and report."},
     {"version":"1.1.0-rc.4","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.4","severity":"recommended","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"A running server is never taken down by a single bad packet anymore: rare runtime packet failures (usually from another packet-rewriting plugin) drop only that packet, re-request the chunk, and keep protection active; quarantine now requires repeated failures. Adds real diagnostics and evidence-based conflict naming to failure logs. Strongly recommended for all 1.1.0 release-candidate testers."},
     {"version":"1.1.0-rc.3","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.3","severity":"optional","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Stops thread-check log spam and TPS stutter on Folia-family servers when other plugins (TAB, holograms) flush packets from their own threads: the entity-spawn handler no longer resolves live entities there and works purely from packet data. Strongly recommended for all Folia testers."},
     {"version":"1.1.0-rc.2","download":"https://github.com/DeKaeyman/ChunkVeil/releases/tag/v1.1.0-rc.2","severity":"optional","prerelease":true,"mc":[{"min":"1.21","max":"1.21"},{"min":"26.0","max":"26.2"}],"notes":"Fixes a Folia-family security trip when another plugin flushes queued spawn packets from a foreign thread (reported on Canvas 26.2). Detects an incompatible ProtocolLib build at startup and names it clearly in the log instead of protection failing on the first player join. Adds Folia 26.1.2 to the boot-verified targets. Strongly recommended for all Folia testers."},

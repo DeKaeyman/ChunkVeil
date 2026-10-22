@@ -219,9 +219,9 @@ record VeilSettings(
 
     VeilWorldSettings world(World world) {
         if (world == null) {
-            return disabledDefaults();
+            return DISABLED_WORLD;
         }
-        return worlds.getOrDefault(world.getName(), disabledDefaults());
+        return worlds.getOrDefault(world.getName(), DISABLED_WORLD);
     }
 
     int hideBelowY(World world) {
@@ -230,6 +230,68 @@ record VeilSettings(
 
     int minY(World world) {
         return world(world).minY();
+    }
+
+    /**
+     * Lowest Y that is actually concealed: the configured min-y, but never
+     * below the world's real bottom. Every path that decides what is hidden
+     * (chunk sections, block entities, light, block updates, entities) must
+     * use the same floor, or data hidden by one path leaks through another.
+     */
+    int hideMinY(World world) {
+        return Math.max(world.getMinHeight(), minY(world));
+    }
+
+    /**
+     * Whether this world has any blocks to conceal. False when the band
+     * [min-y, hide-below-y) lies entirely outside the world's real height,
+     * e.g. the End (bottom y=0) with hide-below-y 0. Such a world must be
+     * treated as "nothing to hide", not as a rewrite failure.
+     */
+    boolean hasConcealedBand(World world) {
+        return world != null && hasConcealedBand(world.getMinHeight(), world.getMaxHeight(), minY(world), hideBelowY(world));
+    }
+
+    /**
+     * Worlds whose chunk contents would be concealed differently under the
+     * new settings (enabled, cutoff, min-y, fake block, hide-air). Clients may
+     * hold chunk data from the old settings for these, so it must be resent.
+     * Entity, ray, and performance settings do not change chunk contents.
+     */
+    static Set<String> worldsWithChangedChunkConcealment(Map<String, VeilWorldSettings> before,
+            Map<String, VeilWorldSettings> after) {
+        Set<String> names = new java.util.HashSet<>(before.keySet());
+        names.addAll(after.keySet());
+        Set<String> changed = new java.util.HashSet<>();
+        for (String name : names) {
+            VeilWorldSettings old = before.get(name);
+            VeilWorldSettings current = after.get(name);
+            if (!sameChunkConcealment(old, current)) {
+                changed.add(name);
+            }
+        }
+        return Set.copyOf(changed);
+    }
+
+    private static boolean sameChunkConcealment(VeilWorldSettings a, VeilWorldSettings b) {
+        boolean aEnabled = a != null && a.enabled();
+        boolean bEnabled = b != null && b.enabled();
+        if (!aEnabled && !bEnabled) {
+            return true;
+        }
+        if (aEnabled != bEnabled) {
+            return false;
+        }
+        return a.hideBelowY() == b.hideBelowY()
+                && a.minY() == b.minY()
+                && a.defaultFakeBlock() == b.defaultFakeBlock()
+                && a.hideAir() == b.hideAir();
+    }
+
+    static boolean hasConcealedBand(int worldMinHeight, int worldMaxHeight, int minY, int hideBelowY) {
+        int bandBottom = Math.max(worldMinHeight, minY);
+        int bandTop = Math.min(worldMaxHeight, hideBelowY);
+        return bandTop > bandBottom;
     }
 
     Material defaultFakeBlock(World world) {
@@ -248,12 +310,24 @@ record VeilSettings(
         return world(world).hidePlayers();
     }
 
-    Material replacementFor(World world, Material realBlock) {
-        return world(world).replacementFor(realBlock);
+    // Shared settings for worlds missing from the config. A constant: world()
+    // runs per packet and per block, and used to allocate this every call
+    // (getOrDefault evaluates its default argument eagerly).
+    private static final VeilWorldSettings DISABLED_WORLD =
+            new VeilWorldSettings(false, 0, -64, Material.DEEPSLATE, false, true, false);
+
+    /** Whether any enabled world hides entities; when none does, entity packets need no listener. */
+    boolean anyWorldHidesEntities() {
+        return anyWorldHidesEntities(worlds);
     }
 
-    private VeilWorldSettings disabledDefaults() {
-        return new VeilWorldSettings(false, 0, -64, Material.DEEPSLATE, false, true, false);
+    static boolean anyWorldHidesEntities(Map<String, VeilWorldSettings> worlds) {
+        for (VeilWorldSettings world : worlds.values()) {
+            if (world.enabled() && world.hideEntities()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static VeilWorldSettings loadWorldSettings(String worldName, ConfigurationSection section, List<String> validationWarnings) {
@@ -333,6 +407,13 @@ record VeilSettings(
             }
             if (worldSettings.hideBelowY() <= worldSettings.minY()) {
                 validationWarnings.add("World '" + worldName + "' has hide-below-y <= min-y. No hidden Y range will be processed.");
+            } else if (worldSettings.enabled() && loadedWorld != null
+                    && !hasConcealedBand(loadedWorld.getMinHeight(), loadedWorld.getMaxHeight(),
+                            worldSettings.minY(), worldSettings.hideBelowY())) {
+                validationWarnings.add("World '" + worldName + "' has hide-below-y " + worldSettings.hideBelowY()
+                        + " and min-y " + worldSettings.minY() + ", but the world spans y=" + loadedWorld.getMinHeight()
+                        + " to " + loadedWorld.getMaxHeight() + ". Nothing in this world is hidden; raise hide-below-y"
+                        + " above y=" + loadedWorld.getMinHeight() + " to protect it.");
             }
             validateFakeBlock(worldName, worldSettings.defaultFakeBlock(), validationWarnings);
             validateDimensionFakeBlock(worldName, loadedWorld, worldSettings.defaultFakeBlock(), validationWarnings);
